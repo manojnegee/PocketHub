@@ -17,10 +17,10 @@ package com.github.pockethub.android.ui.user;
 
 import android.os.Bundle;
 
-import com.meisolsson.githubsdk.model.Repository;
-import com.meisolsson.githubsdk.model.User;
 import com.github.pockethub.android.core.user.UserEventMatcher.UserPair;
 import com.github.pockethub.android.ui.NewsFragment;
+import com.meisolsson.githubsdk.model.Repository;
+import com.meisolsson.githubsdk.model.User;
 
 import static com.github.pockethub.android.Intents.EXTRA_USER;
 
@@ -39,20 +39,24 @@ public abstract class UserNewsFragment extends NewsFragment implements
     public void onSaveInstanceState(Bundle outState) {
         super.onSaveInstanceState(outState);
 
-        if (org != null)
+        if (org != null) {
             outState.putParcelable(EXTRA_USER, org);
+        }
     }
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
-        if (getActivity() instanceof OrganizationSelectionProvider)
+        if (getActivity() instanceof OrganizationSelectionProvider) {
             org = ((OrganizationSelectionProvider) getActivity()).addListener(this);
+        }
 
-        if (getArguments() != null && getArguments().containsKey("org"))
+        if (getArguments() != null && getArguments().containsKey("org")) {
             org = getArguments().getParcelable("org");
+        }
 
-        if (org == null && savedInstanceState != null)
+        if (org == null && savedInstanceState != null) {
             org = (User) savedInstanceState.get(EXTRA_USER);
+        }
 
         super.onActivityCreated(savedInstanceState);
     }
@@ -70,19 +74,21 @@ public abstract class UserNewsFragment extends NewsFragment implements
     @Override
     protected void viewRepository(Repository repository) {
         User owner = repository.owner();
-        if (owner != null && org.login().equals(owner.login()))
+        if (owner != null && org.login().equals(owner.login())) {
             repository = repository.toBuilder().owner(org).build();
+        }
 
         super.viewRepository(repository);
     }
 
     @Override
     public void onOrganizationSelected(User organization) {
-        int previousOrgId = org != null ? org.id() : -1;
+        int previousOrgId = org != null ? org.id().intValue() : -1;
         org = organization;
         // Only hard refresh if view already created and org is changing
-        if (previousOrgId != org.id())
+        if (previousOrgId != org.id()) {
             refreshWithProgress();
+        }
     }
 
     @Override
@@ -96,7 +102,8 @@ public abstract class UserNewsFragment extends NewsFragment implements
 
     @Override
     protected void viewUser(UserPair users) {
-        if (!viewUser(users.from))
+        if (!viewUser(users.from)) {
             viewUser(users.to);
+        }
     }
 }

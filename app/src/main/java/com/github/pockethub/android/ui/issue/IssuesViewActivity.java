@@ -18,9 +18,11 @@ package com.github.pockethub.android.ui.issue;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.v7.app.ActionBar;
+import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import com.github.pockethub.android.rx.AutoDisposeUtils;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Issue;
 import com.meisolsson.githubsdk.model.Repository;
@@ -29,7 +31,6 @@ import com.github.pockethub.android.Intents.Builder;
 import com.github.pockethub.android.R;
 import com.github.pockethub.android.core.issue.IssueStore;
 import com.github.pockethub.android.core.issue.IssueUtils;
-import com.github.pockethub.android.rx.ObserverAdapter;
 import com.github.pockethub.android.ui.FragmentProvider;
 import com.github.pockethub.android.ui.PagerActivity;
 import com.github.pockethub.android.ui.ViewPager;
@@ -38,15 +39,16 @@ import com.github.pockethub.android.ui.user.UriLauncherActivity;
 import com.github.pockethub.android.util.AvatarLoader;
 import com.github.pockethub.android.util.InfoUtils;
 import com.meisolsson.githubsdk.service.repositories.RepositoryService;
-import com.google.inject.Inject;
+import javax.inject.Inject;
 
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.concurrent.atomic.AtomicReference;
 
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import butterknife.BindView;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 
 import static android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP;
 import static android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP;
@@ -131,11 +133,13 @@ public class IssuesViewActivity extends PagerActivity {
             Repository issueRepo = issue.repository();
             if (issueRepo != null) {
                 User owner = issueRepo.owner();
-                if (owner != null)
+                if (owner != null) {
                     repoId = InfoUtils.createRepoFromData(owner.login(), issueRepo.name());
+                }
             }
-            if (repoId == null)
+            if (repoId == null) {
                 repoId = InfoUtils.createRepoFromUrl(issue.htmlUrl());
+            }
             repos.add(repoId);
         }
 
@@ -147,7 +151,8 @@ public class IssuesViewActivity extends PagerActivity {
         return builder.toIntent();
     }
 
-    private ViewPager pager;
+    @BindView(R.id.vp_pages)
+    protected ViewPager pager;
 
     private int[] issueNumbers;
 
@@ -158,12 +163,12 @@ public class IssuesViewActivity extends PagerActivity {
     private Repository repo;
 
     @Inject
-    private AvatarLoader avatars;
+    protected AvatarLoader avatars;
 
     @Inject
-    private IssueStore store;
+    protected IssueStore store;
 
-    private final AtomicReference<User> user = new AtomicReference<>();
+    private User user;
 
     private boolean canWrite;
 
@@ -172,21 +177,18 @@ public class IssuesViewActivity extends PagerActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_pager);
 
         issueNumbers = getIntArrayExtra(EXTRA_ISSUE_NUMBERS);
         pullRequests = getBooleanArrayExtra(EXTRA_PULL_REQUESTS);
         repoIds = getIntent().getParcelableArrayListExtra(EXTRA_REPOSITORIES);
         repo = getParcelableExtra(EXTRA_REPOSITORY);
 
-        setContentView(R.layout.activity_pager);
-
-        setSupportActionBar((android.support.v7.widget.Toolbar) findViewById(R.id.toolbar));
-
-        getSupportActionBar().setDisplayHomeAsUpEnabled(true);
+        ActionBar actionBar = getSupportActionBar();
+        actionBar.setDisplayHomeAsUpEnabled(true);
         if (repo != null) {
-            ActionBar actionBar = getSupportActionBar();
             actionBar.setSubtitle(InfoUtils.createRepoId(repo));
-            user.set(repo.owner());
+            user = repo.owner();
             avatars.bind(actionBar, user);
         }
 
@@ -198,21 +200,23 @@ public class IssuesViewActivity extends PagerActivity {
                     .getRepository(temp.owner().login(), temp.name())
                     .subscribeOn(Schedulers.io())
                     .observeOn(AndroidSchedulers.mainThread())
-                    .compose(this.<Repository>bindToLifecycle())
-                    .subscribe(new ObserverAdapter<Repository>() {
-                        @Override
-                        public void onNext(Repository repo) {
-                            repositoryLoaded(repo);
-                        }
-                    });
+                    .as(AutoDisposeUtils.bindToLifecycle(this))
+                    .subscribe(response -> repositoryLoaded(response.body()));
         } else {
             repositoryLoaded(repo);
         }
     }
 
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        pager.removeOnPageChangeListener(this);
+    }
+
     private void repositoryLoaded(Repository repo) {
-        if (issueNumbers.length == 1 && (user.get() == null || user.get().avatarUrl() == null))
+        if (issueNumbers.length == 1 && (user == null || user.avatarUrl() == null)) {
             avatars.bind(getSupportActionBar(), repo.owner());
+        }
 
         canWrite = repo.permissions() != null && (repo.permissions().admin() || repo.permissions().push());
 
@@ -222,15 +226,15 @@ public class IssuesViewActivity extends PagerActivity {
 
     private void configurePager() {
         int initialPosition = getIntExtra(EXTRA_POSITION);
-        pager = finder.find(R.id.vp_pages);
 
-        if (repo != null)
+        if (repo != null) {
             adapter = new IssuesPagerAdapter(this, repo, issueNumbers, canWrite);
-        else
+        } else {
             adapter = new IssuesPagerAdapter(this, repoIds, issueNumbers, store, canWrite);
+        }
         pager.setAdapter(adapter);
 
-        pager.setOnPageChangeListener(this);
+        pager.addOnPageChangeListener(this);
         pager.scheduleSetItem(initialPosition, this);
         onPageSelected(initialPosition);
     }
@@ -239,12 +243,13 @@ public class IssuesViewActivity extends PagerActivity {
         int number = issueNumbers[position];
         boolean pullRequest = pullRequests[position];
 
-        if (pullRequest)
+        if (pullRequest) {
             getSupportActionBar().setTitle(
-                getString(R.string.pull_request_title) + number);
-        else
+                    getString(R.string.pull_request_title) + number);
+        } else {
             getSupportActionBar().setTitle(
-                getString(R.string.issue_title) + number);
+                    getString(R.string.issue_title) + number);
+        }
     }
 
     @Override
@@ -256,8 +261,9 @@ public class IssuesViewActivity extends PagerActivity {
             return;
         }
 
-        if (repoIds == null)
+        if (repoIds == null) {
             return;
+        }
 
         ActionBar actionBar = getSupportActionBar();
         repo = repoIds.get(position);
@@ -268,12 +274,14 @@ public class IssuesViewActivity extends PagerActivity {
             if (issue != null) {
                 Repository fullRepo = issue.repository();
                 if (fullRepo != null && fullRepo.owner() != null) {
-                    user.set(fullRepo.owner());
+                    user = fullRepo.owner();
                     avatars.bind(actionBar, user);
-                } else
+                } else {
                     actionBar.setLogo(null);
-            } else
+                }
+            } else {
                 actionBar.setLogo(null);
+            }
         } else {
             actionBar.setSubtitle(null);
             actionBar.setLogo(null);
@@ -289,21 +297,16 @@ public class IssuesViewActivity extends PagerActivity {
     @Override
     public void startActivity(Intent intent) {
         Intent converted = UriLauncherActivity.convert(intent);
-        if (converted != null)
+        if (converted != null) {
             super.startActivity(converted);
-        else
+        } else {
             super.startActivity(intent);
+        }
     }
 
     @Override
     protected FragmentProvider getProvider() {
         return adapter;
-    }
-
-    @Override
-    public boolean onPrepareOptionsMenu(Menu menu) {
-
-        return super.onPrepareOptionsMenu(menu);
     }
 
     @Override
@@ -317,8 +320,9 @@ public class IssuesViewActivity extends PagerActivity {
                     if (repoId != null) {
                         Issue issue = store.getIssue(repoId,
                             issueNumbers[position]);
-                        if (issue != null)
+                        if (issue != null) {
                             repository = issue.repository();
+                        }
                     }
                 }
                 if (repository != null) {

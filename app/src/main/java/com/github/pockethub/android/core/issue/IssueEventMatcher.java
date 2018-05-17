@@ -34,9 +34,10 @@ public class IssueEventMatcher {
      * @param event
      * @return issue or null if event doesn't apply
      */
-    public Issue getIssue(GitHubEvent event) {
-        if (event == null || event.payload() == null)
+    public static Issue getIssue(GitHubEvent event) {
+        if (event == null || event.payload() == null) {
             return null;
+        }
 
         switch (event.type()) {
             case IssuesEvent:

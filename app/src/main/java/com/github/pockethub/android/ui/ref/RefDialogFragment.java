@@ -15,77 +15,30 @@
  */
 package com.github.pockethub.android.ui.ref;
 
-import android.app.Activity;
 import android.app.Dialog;
-import android.content.DialogInterface;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
-import android.widget.ListView;
 
-import com.afollestad.materialdialogs.DialogAction;
-import com.afollestad.materialdialogs.MaterialDialog;
-import com.github.kevinsawicki.wishlist.SingleTypeAdapter;
 import com.github.pockethub.android.R;
-import com.github.pockethub.android.core.ref.RefUtils;
 import com.github.pockethub.android.ui.BaseActivity;
 import com.github.pockethub.android.ui.SingleChoiceDialogFragment;
-import com.github.pockethub.android.util.TypefaceUtils;
+import com.github.pockethub.android.ui.item.dialog.RefDialogItem;
 import com.meisolsson.githubsdk.model.git.GitReference;
+import com.xwray.groupie.GroupAdapter;
+import com.xwray.groupie.Item;
 
 import java.util.ArrayList;
+import java.util.Collection;
+
+import io.reactivex.Observable;
 
 import static android.app.Activity.RESULT_OK;
-import static android.content.DialogInterface.BUTTON_NEGATIVE;
 
 /**
  * Dialog fragment to select a branch or tag
  */
 public class RefDialogFragment extends SingleChoiceDialogFragment {
-
-    private static class RefListAdapter extends SingleTypeAdapter<GitReference> {
-
-        private final int selected;
-
-        public RefListAdapter(LayoutInflater inflater, GitReference[] refs,
-                int selected) {
-            super(inflater, R.layout.ref_item);
-
-            this.selected = selected;
-            setItems(refs);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return getItem(position).ref().hashCode();
-        }
-
-        @Override
-        protected int[] getChildViewIds() {
-            return new int[] { R.id.tv_ref_icon, R.id.tv_ref, R.id.rb_selected };
-        }
-
-        @Override
-        protected View initialize(View view) {
-            view = super.initialize(view);
-
-            TypefaceUtils.setOcticons(textView(0));
-            return view;
-        }
-
-        @Override
-        protected void update(int position, GitReference item) {
-            if (RefUtils.isTag(item))
-                setText(0, R.string.icon_tag);
-            else
-                setText(0, R.string.icon_fork);
-            setText(1, RefUtils.getName(item));
-            setChecked(2, selected == position);
-        }
-    }
 
     /**
      * Get selected reference from results bundle
@@ -107,50 +60,28 @@ public class RefDialogFragment extends SingleChoiceDialogFragment {
      * @param choices
      * @param selectedChoice
      */
-    public static void show(final BaseActivity activity,
-            final int requestCode, final String title, final String message,
-            ArrayList<GitReference> choices, final int selectedChoice) {
+    public static void show(final BaseActivity activity, final int requestCode, final String title,
+                            final String message, ArrayList<GitReference> choices,
+                            final int selectedChoice) {
         show(activity, requestCode, title, message, choices, selectedChoice,
                 new RefDialogFragment());
     }
 
+    @NonNull
     @Override
     public Dialog onCreateDialog(final Bundle savedInstanceState) {
-        Activity activity = getActivity();
-        Bundle arguments = getArguments();
+        int selected = getArguments().getInt(ARG_SELECTED_CHOICE);
 
-        final MaterialDialog.Builder dialogBuilder = createDialogBuilder()
+        GroupAdapter adapter = new GroupAdapter();
+        for (GitReference ref : getChoices()) {
+            adapter.add(new RefDialogItem(ref, selected));
+        }
+        adapter.setOnItemClickListener(this);
+
+        return createDialogBuilder()
+                .adapter(adapter, null)
                 .negativeText(R.string.cancel)
-                .onNegative(new MaterialDialog.SingleButtonCallback() {
-                    @Override
-                    public void onClick(@NonNull MaterialDialog dialog, @NonNull DialogAction which) {
-                        RefDialogFragment.this.onClick(dialog, BUTTON_NEGATIVE);
-                    }
-                });
-
-        LayoutInflater inflater = activity.getLayoutInflater();
-
-        ListView view = (ListView) inflater.inflate(R.layout.dialog_list_view,
-                null);
-        view.setOnItemClickListener(new OnItemClickListener() {
-
-            @Override
-            public void onItemClick(AdapterView<?> parent, View view,
-                    int position, long id) {
-                onClick(getDialog(), position);
-            }
-        });
-
-        ArrayList<GitReference> choices = getChoices();
-        int selected = arguments.getInt(ARG_SELECTED_CHOICE);
-        RefListAdapter adapter = new RefListAdapter(inflater,
-                choices.toArray(new GitReference[choices.size()]), selected);
-        view.setAdapter(adapter);
-        if (selected >= 0)
-            view.setSelection(selected);
-        dialogBuilder.customView(view, false);
-
-        return dialogBuilder.build();
+                .build();
     }
 
     @SuppressWarnings("unchecked")
@@ -158,16 +89,12 @@ public class RefDialogFragment extends SingleChoiceDialogFragment {
         return getArguments().getParcelableArrayList(ARG_CHOICES);
     }
 
-    @Override
-    public void onClick(DialogInterface dialog, int which) {
-        super.onClick(dialog, which);
 
-        switch (which) {
-        case BUTTON_NEGATIVE:
-            break;
-        default:
-            getArguments().putParcelable(ARG_SELECTED,
-                    getChoices().get(which));
+    @Override
+    public void onItemClick(@NonNull Item item, @NonNull View view) {
+        super.onItemClick(item, view);
+        if (item instanceof RefDialogItem) {
+            getArguments().putParcelable(ARG_SELECTED, ((RefDialogItem) item).getGitReference());
             onResult(RESULT_OK);
         }
     }

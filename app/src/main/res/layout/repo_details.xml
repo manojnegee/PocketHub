@@ -39,10 +39,9 @@
         <TextView
             android:id="@+id/tv_language"
             style="@style/ListSubtitleText"
-            android:paddingEnd="15dp"
-            android:paddingRight="15dp" />
+            android:paddingEnd="15dp" />
 
-        <TextView
+        <com.github.pockethub.android.ui.view.OcticonTextView
             android:id="@+id/tv_watchers_icon"
             style="@style/ListIcon"
             android:text="@string/icon_star" />
@@ -50,12 +49,10 @@
         <TextView
             android:id="@+id/tv_watchers"
             style="@style/ListNumericSubtitleText"
-            android:paddingLeft="3dp"
             android:paddingStart="3dp"
-            android:paddingEnd="15dp"
-            android:paddingRight="15dp" />
+            android:paddingEnd="15dp" />
 
-        <TextView
+        <com.github.pockethub.android.ui.view.OcticonTextView
             android:id="@+id/tv_forks_icon"
             style="@style/ListIcon"
             android:text="@string/icon_fork" />
@@ -63,8 +60,7 @@
         <TextView
             android:id="@+id/tv_forks"
             style="@style/ListNumericSubtitleText"
-            android:paddingStart="3dp"
-            android:paddingLeft="3dp" />
+            android:paddingStart="3dp" />
     </LinearLayout>
 
 </merge>

@@ -19,70 +19,74 @@ import android.app.Activity;
 import android.content.Context;
 
 import com.github.pockethub.android.util.HttpImageGetter;
+import com.google.auto.factory.AutoFactory;
+import com.google.auto.factory.Provided;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Gist;
 import com.meisolsson.githubsdk.model.GitHubComment;
 import com.meisolsson.githubsdk.service.gists.GistCommentService;
 import com.meisolsson.githubsdk.service.gists.GistService;
-import com.google.inject.Inject;
+import javax.inject.Inject;
 
 import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 
+import io.reactivex.Observable;
+import io.reactivex.Single;
+import io.reactivex.SingleEmitter;
+import io.reactivex.SingleOnSubscribe;
 import retrofit2.Response;
-import roboguice.RoboGuice;
-import rx.Observable;
-import rx.Subscriber;
 
 /**
- * Task to load and store a {@link Gist}
+ * Task to load and store a {@link Gist}.
  */
-public class RefreshGistTask implements Observable.OnSubscribe<FullGist> {
+@AutoFactory
+public class RefreshGistTask {
 
     private final Context context;
 
-    @Inject
-    private GistStore store;
+    private final GistService service;
+
+    private final GistStore store;
 
     private final String id;
 
     private final HttpImageGetter imageGetter;
 
     /**
-     * Create task to refresh the given {@link Gist}
+     * Create task to refresh the given {@link Gist}.
      *
      * @param gistId
      * @param imageGetter
      */
-    public RefreshGistTask(Activity activity, String gistId,
-                           HttpImageGetter imageGetter) {
-        id = gistId;
+    public RefreshGistTask(@Provided GistStore store, @Provided HttpImageGetter imageGetter,
+                           Activity activity, String gistId) {
+        this.store = store;
+        this.id = gistId;
         this.imageGetter = imageGetter;
         this.context = activity;
-        RoboGuice.injectMembers(activity, this);
+        this.service = ServiceGenerator.createService(context, GistService.class);
     }
 
-    @Override
-    public void call(Subscriber<? super FullGist> subscriber) {
-        try {
-            Gist gist = store.refreshGist(id);
-            List<GitHubComment> comments;
-            if (gist.comments() > 0)
-                comments = ServiceGenerator.createService(context, GistCommentService.class).getGistComments(id, 0).toBlocking().first().items();
-            else
-                comments = Collections.emptyList();
+    public Single<FullGist> refresh() {
+        Single<Gist> gistSingle = store.refreshGist(id);
+        Single<List<GitHubComment>> commentSingle = getGistComments();
+        Single<Boolean> starredSingle = service.checkIfGistIsStarred(id)
+                .map(response -> response.code() == 204);
 
-            for (GitHubComment comment : comments) {
-                imageGetter.encode(comment, comment.bodyHtml());
-            }
-            Response<Boolean> response = ServiceGenerator.createService(context, GistService.class).checkIfGistIsStarred(id).toBlocking().first();
-            boolean starred = response.code() == 204;
+        return Single.zip(gistSingle, starredSingle, commentSingle, FullGist::new);
+    }
 
+    Single<List<GitHubComment>> getGistComments() {
+        return ServiceGenerator.createService(context, GistCommentService.class)
+                .getGistComments(id, 0)
+                .flatMapObservable(response -> Observable.fromIterable(response.body().items()))
+                .map(comment -> {
+                    imageGetter.encode(comment, comment.bodyHtml());
+                    return comment;
+                })
+                .toList();
 
-            subscriber.onNext(new FullGist(gist, starred, comments));
-        }catch (IOException e){
-            subscriber.onError(e);
-        }
     }
 }

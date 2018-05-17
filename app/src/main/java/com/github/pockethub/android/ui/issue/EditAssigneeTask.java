@@ -15,24 +15,24 @@
  */
 package com.github.pockethub.android.ui.issue;
 
+import com.github.pockethub.android.rx.AutoDisposeUtils;
+import com.github.pockethub.android.rx.RxProgress;
+import com.google.auto.factory.AutoFactory;
+import com.google.auto.factory.Provided;
 import com.meisolsson.githubsdk.model.Issue;
 import com.meisolsson.githubsdk.model.Repository;
 import com.meisolsson.githubsdk.model.User;
 import com.github.pockethub.android.R;
 import com.github.pockethub.android.core.issue.IssueStore;
-import com.github.pockethub.android.rx.ProgressObserverAdapter;
 import com.github.pockethub.android.ui.BaseActivity;
 import com.meisolsson.githubsdk.model.request.issue.IssueRequest;
-import com.google.inject.Inject;
+import javax.inject.Inject;
 
-import java.io.IOException;
 import java.util.Collections;
 
-import roboguice.RoboGuice;
-import rx.Observable;
-import rx.Subscriber;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.functions.Consumer;
+import io.reactivex.schedulers.Schedulers;
 
 import static com.github.pockethub.android.RequestCodes.ISSUE_ASSIGNEE_UPDATE;
 
@@ -40,10 +40,10 @@ import static com.github.pockethub.android.RequestCodes.ISSUE_ASSIGNEE_UPDATE;
  * Task to edit the assignee
  */
 //TODO Let this take multiple assignees
-public class EditAssigneeTask implements Observable.OnSubscribe<Issue> {
+@AutoFactory
+public class EditAssigneeTask {
 
-    @Inject
-    private IssueStore store;
+    private final IssueStore store;
 
     private final AssigneeDialog assigneeDialog;
 
@@ -53,9 +53,7 @@ public class EditAssigneeTask implements Observable.OnSubscribe<Issue> {
 
     private final int issueNumber;
 
-    private final ProgressObserverAdapter<Issue> observer;
-
-    private User assignee;
+    private final Consumer<Issue> observer;
 
     /**
      * Create task to edit a milestone
@@ -64,35 +62,15 @@ public class EditAssigneeTask implements Observable.OnSubscribe<Issue> {
      * @param repositoryId
      * @param issueNumber
      */
-    public EditAssigneeTask(final BaseActivity activity,
+    public EditAssigneeTask(@Provided IssueStore store, final BaseActivity activity,
                             final Repository repositoryId, final int issueNumber,
-                            final ProgressObserverAdapter<Issue> observer) {
+                            final Consumer<Issue> observer) {
+        this.store = store;
         this.activity = activity;
         this.repositoryId = repositoryId;
         this.issueNumber = issueNumber;
         this.observer = observer;
-        observer.setContent(R.string.updating_assignee);
-        assigneeDialog = new AssigneeDialog(activity, ISSUE_ASSIGNEE_UPDATE,
-                repositoryId);
-        RoboGuice.injectMembers(activity, this);
-    }
-
-    @Override
-    public void call(Subscriber<? super Issue> subscriber) {
-        try{
-            String assigneLogin;
-            if (assignee != null)
-                assigneLogin = assignee.login();
-            else
-                assigneLogin = "";
-
-            IssueRequest edit = IssueRequest.builder()
-                    .assignees(Collections.singletonList(assigneLogin))
-                    .build();
-            subscriber.onNext(store.editIssue(repositoryId, issueNumber, edit));
-        } catch (IOException e) {
-            subscriber.onError(e);
-        }
+        assigneeDialog = new AssigneeDialog(activity, ISSUE_ASSIGNEE_UPDATE, repositoryId);
     }
 
     /**
@@ -108,21 +86,25 @@ public class EditAssigneeTask implements Observable.OnSubscribe<Issue> {
     }
 
     /**
-     * Edit issue to have given assignee
+     * Edit issue to have given assignee.
      *
-     * @param user
+     * @param assignee The user the assign
      * @return this task
      */
-    public EditAssigneeTask edit(User user) {
-        this.assignee = user;
+    public EditAssigneeTask edit(User assignee) {
+        String assigneeLogin = assignee != null ? assignee.login() : "";
 
-        Observable.create(this)
+        IssueRequest edit = IssueRequest.builder()
+                .assignees(Collections.singletonList(assigneeLogin))
+                .build();
+
+        store.editIssue(repositoryId, issueNumber, edit)
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .compose(activity.<Issue>bindToLifecycle())
+                .compose(RxProgress.bindToLifecycle(activity, R.string.updating_assignee))
+                .as(AutoDisposeUtils.bindToLifecycle(activity))
                 .subscribe(observer);
 
         return this;
     }
-
 }

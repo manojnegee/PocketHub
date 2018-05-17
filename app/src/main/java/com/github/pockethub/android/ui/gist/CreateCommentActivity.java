@@ -20,19 +20,18 @@ import android.os.Bundle;
 import android.support.v7.app.ActionBar;
 import android.util.Log;
 
+import com.github.pockethub.android.rx.AutoDisposeUtils;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Gist;
-import com.meisolsson.githubsdk.model.GitHubComment;
 import com.meisolsson.githubsdk.model.User;
 import com.github.pockethub.android.Intents.Builder;
 import com.github.pockethub.android.R;
-import com.github.pockethub.android.rx.ObserverAdapter;
 import com.github.pockethub.android.util.ToastUtils;
 import com.meisolsson.githubsdk.model.request.CommentRequest;
 import com.meisolsson.githubsdk.service.gists.GistCommentService;
 
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 
 import static com.github.pockethub.android.Intents.EXTRA_GIST;
 
@@ -61,14 +60,16 @@ public class CreateCommentActivity extends
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.pager_with_tabs);
 
         gist = getParcelableExtra(EXTRA_GIST);
 
         ActionBar actionBar = getSupportActionBar();
         actionBar.setTitle(getString(R.string.gist_title) + gist.id());
         User user = gist.owner();
-        if (user != null)
+        if (user != null) {
             actionBar.setSubtitle(user.login());
+        }
         avatars.bind(actionBar, user);
     }
 
@@ -82,19 +83,11 @@ public class CreateCommentActivity extends
                 .createGistComment(gist.id(), commentRequest)
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .compose(this.<GitHubComment>bindToLifecycle())
-                .subscribe(new ObserverAdapter<GitHubComment>() {
-                    @Override
-                    public void onNext(GitHubComment githubComment) {
-                        finish(githubComment);
-                    }
+                .as(AutoDisposeUtils.bindToLifecycle(this))
+                .subscribe(response -> finish(response.body()), error -> {
+                    Log.e(TAG, "Exception creating comment on gist", error);
 
-                    @Override
-                    public void onError(Throwable error) {
-                        Log.e(TAG, "Exception creating comment on gist", error);
-
-                        ToastUtils.show(CreateCommentActivity.this, error.getMessage());
-                    }
+                    ToastUtils.show(this, error.getMessage());
                 });
     }
 }

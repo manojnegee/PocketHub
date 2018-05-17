@@ -23,7 +23,10 @@ import com.meisolsson.githubsdk.model.GitHubEventType;
 import com.meisolsson.githubsdk.model.Repository;
 import com.meisolsson.githubsdk.model.payload.ForkPayload;
 
-import static com.meisolsson.githubsdk.model.GitHubEventType.*;
+import static com.meisolsson.githubsdk.model.GitHubEventType.CreateEvent;
+import static com.meisolsson.githubsdk.model.GitHubEventType.ForkEvent;
+import static com.meisolsson.githubsdk.model.GitHubEventType.PublicEvent;
+import static com.meisolsson.githubsdk.model.GitHubEventType.WatchEvent;
 
 /**
  * Helper to find a {@link RepositoryEventMatcher} to open for an event
@@ -36,9 +39,10 @@ public class RepositoryEventMatcher {
      * @param event
      * @return gist or null if event doesn't apply
      */
-    public Repository getRepository(final GitHubEvent event) {
-        if (event == null || event.payload() == null)
+    public static Repository getRepository(final GitHubEvent event) {
+        if (event == null || event.payload() == null) {
             return null;
+        }
 
         GitHubEventType type = event.type();
         if (ForkEvent.equals(type)) {
@@ -46,13 +50,15 @@ public class RepositoryEventMatcher {
             // Verify repository has valid name and owner
             if (repository != null && !TextUtils.isEmpty(repository.name())
                     && repository.owner() != null
-                    && !TextUtils.isEmpty(repository.owner().login()))
+                    && !TextUtils.isEmpty(repository.owner().login())) {
                 return repository;
+            }
         }
 
         if (CreateEvent.equals(type) || WatchEvent.equals(type)
-                || PublicEvent.equals(type))
+                || PublicEvent.equals(type)) {
             return ConvertUtils.eventRepoToRepo(event.repo());
+        }
 
         return null;
     }

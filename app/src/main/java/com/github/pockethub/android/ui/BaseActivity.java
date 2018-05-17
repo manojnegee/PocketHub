@@ -18,85 +18,39 @@ package com.github.pockethub.android.ui;
 import android.os.Bundle;
 import android.os.Parcelable;
 import android.support.annotation.CallSuper;
+import android.support.annotation.LayoutRes;
+import android.support.annotation.Nullable;
+import android.support.v7.app.AppCompatActivity;
+import android.support.v7.widget.Toolbar;
 
-import com.github.kevinsawicki.wishlist.ViewFinder;
-import com.github.pockethub.android.ui.roboactivities.RoboAppCompatActivity;
-import com.trello.rxlifecycle.ActivityEvent;
-import com.trello.rxlifecycle.ActivityLifecycleProvider;
-import com.trello.rxlifecycle.RxLifecycle;
+import com.github.pockethub.android.R;
+import com.uber.autodispose.AutoDispose;
+import com.uber.autodispose.AutoDisposeConverter;
+import com.uber.autodispose.android.lifecycle.AndroidLifecycleScopeProvider;
 
-import rx.Observable;
-import rx.subjects.BehaviorSubject;
+import butterknife.BindView;
+import butterknife.ButterKnife;
+import dagger.android.support.DaggerAppCompatActivity;
+import io.reactivex.Observable;
+import io.reactivex.subjects.BehaviorSubject;
 
 /**
  * Activity that display dialogs
  */
-public abstract class BaseActivity extends
-        RoboAppCompatActivity implements DialogResultListener, ActivityLifecycleProvider {
+public abstract class BaseActivity extends DaggerAppCompatActivity implements DialogResultListener {
 
-    /**
-     * Finder bound to this activity's view
-     */
-    protected ViewFinder finder;
-    private final BehaviorSubject<ActivityEvent> lifecycleSubject = BehaviorSubject.create();
+    @BindView(R.id.toolbar)
+    protected Toolbar toolbar;
 
-    @CallSuper
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        lifecycleSubject.onNext(ActivityEvent.CREATE);
-        finder = new ViewFinder(this);
+    public void onContentChanged() {
+        super.onContentChanged();
+        ButterKnife.bind(this);
+        setSupportActionBar(toolbar);
     }
 
-
-    @Override
-    public final Observable<ActivityEvent> lifecycle() {
-        return lifecycleSubject.asObservable();
-    }
-
-    @Override
-    public final <T> Observable.Transformer<T, T> bindUntilEvent(ActivityEvent event) {
-        return RxLifecycle.bindUntilActivityEvent(lifecycleSubject, event);
-    }
-
-    @Override
-    public final <T> Observable.Transformer<T, T> bindToLifecycle() {
-        return RxLifecycle.bindActivity(lifecycleSubject);
-    }
-
-    @Override
-    @CallSuper
-    protected void onStart() {
-        super.onStart();
-        lifecycleSubject.onNext(ActivityEvent.START);
-    }
-
-    @Override
-    @CallSuper
-    protected void onResume() {
-        super.onResume();
-        lifecycleSubject.onNext(ActivityEvent.RESUME);
-    }
-
-    @Override
-    @CallSuper
-    protected void onPause() {
-        lifecycleSubject.onNext(ActivityEvent.PAUSE);
-        super.onPause();
-    }
-
-    @Override
-    @CallSuper
-    protected void onStop() {
-        lifecycleSubject.onNext(ActivityEvent.STOP);
-        super.onStop();
-    }
-
-    @Override
-    @CallSuper
-    protected void onDestroy() {
-        lifecycleSubject.onNext(ActivityEvent.DESTROY);
-        super.onDestroy();
+    public Toolbar getToolbar() {
+        return toolbar;
     }
 
     /**

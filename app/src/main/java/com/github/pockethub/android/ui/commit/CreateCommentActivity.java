@@ -20,7 +20,8 @@ import android.os.Bundle;
 import android.support.v7.app.ActionBar;
 import android.text.TextUtils;
 
-import com.github.pockethub.android.rx.ProgressObserverAdapter;
+import com.github.pockethub.android.rx.AutoDisposeUtils;
+import com.github.pockethub.android.rx.RxProgress;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Repository;
 import com.github.pockethub.android.Intents.Builder;
@@ -29,12 +30,11 @@ import com.github.pockethub.android.core.commit.CommitUtils;
 import com.github.pockethub.android.ui.comment.CommentPreviewPagerAdapter;
 import com.github.pockethub.android.util.InfoUtils;
 import com.github.pockethub.android.util.ToastUtils;
-import com.meisolsson.githubsdk.model.git.GitComment;
 import com.meisolsson.githubsdk.model.request.repository.CreateCommitComment;
 import com.meisolsson.githubsdk.service.repositories.RepositoryCommentService;
 
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 
 import static com.github.pockethub.android.Intents.EXTRA_BASE;
 import static com.github.pockethub.android.Intents.EXTRA_PATH;
@@ -72,8 +72,9 @@ public class CreateCommentActivity extends
         Builder builder = new Builder("commit.comment.create.VIEW");
         builder.repo(repository);
         builder.add(EXTRA_BASE, commit);
-        if (isLineComment(path, position))
+        if (isLineComment(path, position)) {
             builder.add(EXTRA_PATH, path).add(EXTRA_POSITION, position);
+        }
         return builder.toIntent();
     }
 
@@ -97,6 +98,7 @@ public class CreateCommentActivity extends
         path = getStringExtra(EXTRA_PATH);
 
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.pager_with_tabs);
 
         ActionBar actionBar = getSupportActionBar();
         actionBar.setTitle(getString(R.string.commit_prefix)
@@ -111,28 +113,18 @@ public class CreateCommentActivity extends
                 .body(comment);
 
 
-        if(isLineComment(path, position))
+        if(isLineComment(path, position)) {
             commitCommentBuilder.path(path).position(position);
+        }
 
         ServiceGenerator.createService(this, RepositoryCommentService.class)
                 .createCommitComment(repository.owner().login(), repository.name(), commit, commitCommentBuilder.build())
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .compose(this.<GitComment>bindToLifecycle())
-                .subscribe(new ProgressObserverAdapter<GitComment>(this, R.string.creating_comment) {
-
-                    @Override
-                    public void onNext(GitComment created) {
-                        super.onNext(created);
-                        finish(created);
-                    }
-
-                    @Override
-                    public void onError(Throwable e) {
-                        super.onError(e);
-                        ToastUtils.show(CreateCommentActivity.this, e.getMessage());
-                    }
-                }.start());
+                .compose(RxProgress.bindToLifecycle(this, R.string.creating_comment))
+                .as(AutoDisposeUtils.bindToLifecycle(this))
+                .subscribe(response -> finish(response.body()),
+                        e -> ToastUtils.show(this, e.getMessage()));
     }
 
     @Override

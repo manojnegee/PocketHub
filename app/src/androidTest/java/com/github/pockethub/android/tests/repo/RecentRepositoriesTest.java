@@ -32,7 +32,7 @@ public class RecentRepositoriesTest extends AndroidTestCase {
      */
     public void testBadInput() {
         User org = User.builder()
-                .id(20)
+                .id(20L)
                 .build();
 
         RecentRepositories recent = new RecentRepositories(getContext(), org);
@@ -45,7 +45,7 @@ public class RecentRepositoriesTest extends AndroidTestCase {
      */
     public void testMaxReached() {
         User org = User.builder()
-                .id(20)
+                .id(20L)
                 .build();
 
         RecentRepositories recent = new RecentRepositories(getContext(), org);
@@ -59,8 +59,9 @@ public class RecentRepositoriesTest extends AndroidTestCase {
         assertTrue(recent.contains(MAX_SIZE + 1));
         assertFalse(recent.contains(0));
 
-        for (int i = 1; i < MAX_SIZE; i++)
+        for (int i = 1; i < MAX_SIZE; i++) {
             assertTrue(recent.contains(i));
+        }
     }
 
     /**
@@ -68,7 +69,7 @@ public class RecentRepositoriesTest extends AndroidTestCase {
      */
     public void testIO() {
         User org = User.builder()
-                .id(20)
+                .id(20L)
                 .build();
 
         RecentRepositories recent1 = new RecentRepositories(getContext(), org);
@@ -85,7 +86,7 @@ public class RecentRepositoriesTest extends AndroidTestCase {
      */
     public void testScopedStorage() {
         User org1 = User.builder()
-                .id(20)
+                .id(20L)
                 .build();
 
         RecentRepositories recent1 = new RecentRepositories(getContext(), org1);
@@ -94,7 +95,7 @@ public class RecentRepositoriesTest extends AndroidTestCase {
         assertTrue(recent1.contains(id1));
 
         User org2 = User.builder()
-                .id(40)
+                .id(40L)
                 .build();
 
         RecentRepositories recent2 = new RecentRepositories(getContext(), org2);

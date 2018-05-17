@@ -21,35 +21,37 @@ import android.support.v7.app.ActionBar;
 import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.ProgressBar;
 
-import com.meisolsson.githubsdk.core.ServiceGenerator;
-import com.meisolsson.githubsdk.model.User;
-import com.github.kevinsawicki.wishlist.ViewUtils;
 import com.github.pockethub.android.Intents.Builder;
 import com.github.pockethub.android.R;
 import com.github.pockethub.android.accounts.AccountUtils;
-import com.github.pockethub.android.rx.ObserverAdapter;
+import com.github.pockethub.android.rx.AutoDisposeUtils;
 import com.github.pockethub.android.ui.MainActivity;
 import com.github.pockethub.android.ui.TabPagerActivity;
 import com.github.pockethub.android.util.AvatarLoader;
 import com.github.pockethub.android.util.ToastUtils;
+import com.meisolsson.githubsdk.core.ServiceGenerator;
+import com.meisolsson.githubsdk.model.User;
 import com.meisolsson.githubsdk.service.users.UserFollowerService;
 import com.meisolsson.githubsdk.service.users.UserService;
-import com.google.inject.Inject;
 
+import javax.inject.Inject;
+
+import butterknife.BindView;
+import io.reactivex.Single;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 import retrofit2.Response;
-import rx.Observable;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
 
 import static android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP;
 import static android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP;
 import static com.github.pockethub.android.Intents.EXTRA_USER;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_FOLLOW;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_NEWS;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_PUBLIC;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_WATCH;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_FOLLOW;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_NEWS;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_PUBLIC;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_WATCH;
 
 
 /**
@@ -69,11 +71,12 @@ public class UserViewActivity extends TabPagerActivity<UserPagerAdapter>
     }
 
     @Inject
-    private AvatarLoader avatars;
+    protected AvatarLoader avatars;
 
     private User user;
 
-    private ProgressBar loadingBar;
+    @BindView(R.id.pb_loading)
+    protected ProgressBar loadingBar;
 
     private boolean isFollowing;
 
@@ -82,37 +85,30 @@ public class UserViewActivity extends TabPagerActivity<UserPagerAdapter>
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        setContentView(R.layout.tabbed_progress_pager);
 
         user = getIntent().getParcelableExtra(EXTRA_USER);
-        loadingBar = finder.find(R.id.pb_loading);
 
         ActionBar actionBar = getSupportActionBar();
         actionBar.setDisplayHomeAsUpEnabled(true);
         actionBar.setTitle(user.login());
 
-        if (!TextUtils.isEmpty(user.avatarUrl()))
+        if (!TextUtils.isEmpty(user.avatarUrl())) {
             configurePager();
-        else {
-            ViewUtils.setGone(loadingBar, false);
+        } else {
+            loadingBar.setVisibility(View.VISIBLE);
             setGone(true);
             ServiceGenerator.createService(this, UserService.class)
                     .getUser(user.login())
                     .subscribeOn(Schedulers.io())
                     .observeOn(AndroidSchedulers.mainThread())
-                    .compose(this.<User>bindToLifecycle())
-                    .subscribe(new ObserverAdapter<User>() {
-                        @Override
-                        public void onNext(User fullUser) {
-                            user = fullUser;
-                            configurePager();
-                        }
-
-                        @Override
-                        public void onError(Throwable e) {
-                            ToastUtils.show(UserViewActivity.this,
-                                    R.string.error_person_load);
-                            ViewUtils.setGone(loadingBar, true);
-                        }
+                    .as(AutoDisposeUtils.bindToLifecycle(this))
+                    .subscribe(response -> {
+                        user = response.body();
+                        configurePager();
+                    }, e -> {
+                        ToastUtils.show(this, R.string.error_person_load);
+                        loadingBar.setVisibility(View.GONE);
                     });
         }
     }
@@ -155,7 +151,7 @@ public class UserViewActivity extends TabPagerActivity<UserPagerAdapter>
     private void configurePager() {
         avatars.bind(getSupportActionBar(), user);
         configureTabPager();
-        ViewUtils.setGone(loadingBar, true);
+        loadingBar.setVisibility(View.GONE);
         setGone(false);
         checkFollowingUserStatus();
     }
@@ -177,11 +173,6 @@ public class UserViewActivity extends TabPagerActivity<UserPagerAdapter>
     }
 
     @Override
-    protected int getContentView() {
-        return R.layout.tabbed_progress_pager;
-    }
-
-    @Override
     protected String getIcon(int position) {
         switch (position) {
             case 0:
@@ -200,28 +191,18 @@ public class UserViewActivity extends TabPagerActivity<UserPagerAdapter>
     private void followUser() {
         UserFollowerService service = ServiceGenerator.createService(this, UserFollowerService.class);
 
-        Observable<Response<Boolean>> followObservable;
+        Single<Response<Void>> followSingle;
         if (isFollowing) {
-            followObservable = service.unfollowUser(user.login());
+            followSingle = service.unfollowUser(user.login());
         } else{
-            followObservable = service.followUser(user.login());
+            followSingle = service.followUser(user.login());
         }
 
-        followObservable.subscribeOn(Schedulers.io())
+        followSingle.subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .compose(this.<Response<Boolean>>bindToLifecycle())
-                .subscribe(new ObserverAdapter<Response<Boolean>>() {
-                    @Override
-                    public void onNext(Response<Boolean>aBoolean) {
-                        isFollowing = !isFollowing;
-                    }
-
-                    @Override
-                    public void onError(Throwable e) {
-                        ToastUtils.show(UserViewActivity.this,
-                                isFollowing ? R.string.error_unfollowing_person : R.string.error_following_person);
-                    }
-                });
+                .as(AutoDisposeUtils.bindToLifecycle(this))
+                .subscribe(aVoid -> isFollowing = !isFollowing,
+                        e -> ToastUtils.show(this, isFollowing ? R.string.error_unfollowing_person : R.string.error_following_person));
     }
 
     private void checkFollowingUserStatus() {
@@ -230,14 +211,11 @@ public class UserViewActivity extends TabPagerActivity<UserPagerAdapter>
                 .isFollowing(user.login())
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .compose(this.<Response<Boolean>>bindToLifecycle())
-                .subscribe(new ObserverAdapter<Response<Boolean>>() {
-                    @Override
-                    public void onNext(Response<Boolean> response) {
-                        isFollowing = response.code() == 204;
-                        followingStatusChecked = true;
-                        invalidateOptionsMenu();
-                    }
+                .as(AutoDisposeUtils.bindToLifecycle(this))
+                .subscribe(response -> {
+                    isFollowing = response.code() == 204;
+                    followingStatusChecked = true;
+                    invalidateOptionsMenu();
                 });
     }
 }

@@ -16,10 +16,7 @@
 package com.github.pockethub.android.util;
 
 import android.app.Activity;
-import android.text.TextUtils;
 import android.widget.Toast;
-
-import com.github.kevinsawicki.wishlist.Toaster;
 
 /**
  * Utilities for displaying toast notifications
@@ -35,7 +32,7 @@ public class ToastUtils {
      * @param message
      */
     public static void show(final Activity activity, final String message) {
-        Toaster.showLong(activity, message);
+        Toast.makeText(activity, message, Toast.LENGTH_LONG).show();
     }
 
     /**
@@ -47,31 +44,10 @@ public class ToastUtils {
      * @param resId
      */
     public static void show(final Activity activity, final int resId) {
-        if (activity == null)
+        if (activity == null) {
             return;
+        }
 
         show(activity, activity.getString(resId));
-    }
-
-    /**
-     * Show {@link Toast} for throwable
-     * <p>
-     * This given default message will be used if an message can not be derived
-     * from the given {@link Exception}
-     * <p>
-     * This method may be called from any thread
-     *
-     * @param activity
-     * @param e
-     * @param defaultMessage
-     */
-    public static void show(final Activity activity, final Throwable e,
-            final int defaultMessage) {
-        if (activity == null)
-            return;
-
-        String message = activity.getString(defaultMessage);
-
-        show(activity, message);
     }
 }

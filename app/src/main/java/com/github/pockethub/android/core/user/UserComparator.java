@@ -18,7 +18,7 @@ package com.github.pockethub.android.core.user;
 import android.accounts.Account;
 
 import com.meisolsson.githubsdk.model.User;
-import com.google.inject.Inject;
+import javax.inject.Inject;
 
 import java.util.Comparator;
 
@@ -47,11 +47,13 @@ public class UserComparator implements Comparator<User> {
         final String lhsLogin = lhs.login();
         final String rhsLogin = rhs.login();
 
-        if (lhsLogin.equals(login))
+        if (lhsLogin.equals(login)) {
             return rhsLogin.equals(login) ? 0 : -1;
+        }
 
-        if (rhsLogin.equals(login))
+        if (rhsLogin.equals(login)) {
             return lhsLogin.equals(login) ? 0 : 1;
+        }
 
         return CASE_INSENSITIVE_ORDER.compare(lhsLogin, rhsLogin);
     }

@@ -15,34 +15,23 @@
  */
 package com.github.pockethub.android.ui.user;
 
-import com.github.pockethub.android.core.PageIterator;
-import com.github.pockethub.android.core.ResourcePager;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.GitHubEvent;
 import com.meisolsson.githubsdk.model.Page;
 import com.meisolsson.githubsdk.service.activity.EventService;
 
-import rx.Observable;
+import io.reactivex.Single;
+import retrofit2.Response;
 
 /**
  * News that a given user has created
  */
 public class UserCreatedNewsFragment extends UserNewsFragment {
 
-    @Override
-    protected ResourcePager<GitHubEvent> createPager() {
-        return new EventPager() {
+    EventService service = ServiceGenerator.createService(getContext(), EventService.class);
 
-            @Override
-            public PageIterator<GitHubEvent> createIterator(int page, int size) {
-                return new PageIterator<>(new PageIterator.GitHubRequest<Page<GitHubEvent>>() {
-                    @Override
-                    public Observable<Page<GitHubEvent>> execute(int page) {
-                        return ServiceGenerator.createService(getContext(), EventService.class)
-                                .getUserPerformedEvents(org.login(), page);
-                    }
-                }, page);
-            }
-        };
+    @Override
+    protected Single<Response<Page<GitHubEvent>>> loadData(int page) {
+        return service.getUserPerformedEvents(org.login(), page);
     }
 }

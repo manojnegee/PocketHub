@@ -16,14 +16,17 @@
 package com.github.pockethub.android.ui;
 
 import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.support.design.widget.TabLayout;
 import android.support.v4.view.PagerAdapter;
+import android.support.v7.widget.Toolbar;
 import android.view.View;
 import android.widget.TabHost.OnTabChangeListener;
 import android.widget.TabHost.TabContentFactory;
 
-import com.github.kevinsawicki.wishlist.ViewUtils;
 import com.github.pockethub.android.R;
+
+import butterknife.BindView;
 
 /**
  * Activity with tabbed pages
@@ -31,16 +34,18 @@ import com.github.pockethub.android.R;
  * @param <V>
  */
 public abstract class TabPagerActivity<V extends PagerAdapter & FragmentProvider>
-    extends PagerActivity implements OnTabChangeListener, TabContentFactory {
+        extends PagerActivity implements OnTabChangeListener, TabContentFactory {
 
     /**
      * View pager
      */
+    @BindView(R.id.vp_pages)
     protected ViewPager pager;
 
     /**
      * Tab host
      */
+    @BindView(R.id.sliding_tabs_layout)
     protected TabLayout slidingTabsLayout;
 
     /**
@@ -49,17 +54,14 @@ public abstract class TabPagerActivity<V extends PagerAdapter & FragmentProvider
     protected V adapter;
 
     @Override
-    public void onPageSelected(final int position) {
-        super.onPageSelected(position);
-    }
-
-    @Override
     public void onTabChanged(String tabId) {
     }
 
     @Override
     public View createTabContent(String tag) {
-        return ViewUtils.setGone(new View(getApplication()), true);
+        View view = new View(getApplication());
+        view.setVisibility(View.GONE);
+        return view;
     }
 
     /**
@@ -96,8 +98,13 @@ public abstract class TabPagerActivity<V extends PagerAdapter & FragmentProvider
      * @return this activity
      */
     protected TabPagerActivity<V> setGone(boolean gone) {
-        ViewUtils.setGone(slidingTabsLayout, gone);
-        ViewUtils.setGone(pager, gone);
+        if (gone) {
+            slidingTabsLayout.setVisibility(View.GONE);
+            pager.setVisibility(View.GONE);
+        } else {
+            slidingTabsLayout.setVisibility(View.VISIBLE);
+            pager.setVisibility(View.VISIBLE);
+        }
         return this;
     }
 
@@ -113,15 +120,6 @@ public abstract class TabPagerActivity<V extends PagerAdapter & FragmentProvider
      */
     protected void setCurrentItem(final int position) {
         // Intentionally left blank
-    }
-
-    /**
-     * Get content view to be used when {@link #onCreate(Bundle)} is called
-     *
-     * @return layout resource id
-     */
-    protected int getContentView() {
-        return R.layout.pager_with_tabs;
     }
 
     private void updateCurrentItem(final int newPosition) {
@@ -152,19 +150,10 @@ public abstract class TabPagerActivity<V extends PagerAdapter & FragmentProvider
     }
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    protected void onPostCreate(@Nullable Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
 
-        setContentView(getContentView());
-
-        setSupportActionBar((android.support.v7.widget.Toolbar) findViewById(R.id.toolbar));
-
-        // On Lollipop, the action bar shadow is provided by default, so have to remove it explicitly
-        getSupportActionBar().setElevation(0);
-
-        pager = (ViewPager) findViewById(R.id.vp_pages);
         pager.addOnPageChangeListener(this);
-        slidingTabsLayout = (TabLayout) findViewById(R.id.sliding_tabs_layout);
     }
 
     @Override

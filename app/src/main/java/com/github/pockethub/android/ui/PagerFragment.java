@@ -22,7 +22,9 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 
-public abstract class PagerFragment extends DialogFragment implements
+import com.github.pockethub.android.ui.base.BaseFragment;
+
+public abstract class PagerFragment extends BaseFragment implements
     ViewPager.OnPageChangeListener {
 
     /**
@@ -39,17 +41,19 @@ public abstract class PagerFragment extends DialogFragment implements
      */
     protected Fragment getFragment() {
         FragmentProvider provider = getProvider();
-        if (provider != null)
+        if (provider != null) {
             return provider.getSelected();
-        else
+        } else {
             return null;
+        }
     }
 
     @Override
     public boolean onOptionsItemSelected(final MenuItem item) {
         Fragment fragment = getFragment();
-        if (fragment != null)
+        if (fragment != null) {
             return fragment.onOptionsItemSelected(item);
+        }
 
         return super.onOptionsItemSelected(item);
     }
@@ -57,8 +61,9 @@ public abstract class PagerFragment extends DialogFragment implements
     @Override
     public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
         Fragment fragment = getFragment();
-        if (fragment != null)
+        if (fragment != null) {
             fragment.onCreateOptionsMenu(menu, getActivity().getMenuInflater());
+        }
         super.onCreateOptionsMenu(menu, inflater);
     }
 

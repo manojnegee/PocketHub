@@ -22,7 +22,9 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteQueryBuilder;
 
-import com.github.pockethub.android.core.PageIterator;
+import com.github.pockethub.android.core.GitHubRequest;
+import com.google.auto.factory.AutoFactory;
+import com.google.auto.factory.Provided;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Page;
 import com.meisolsson.githubsdk.model.Permissions;
@@ -30,38 +32,22 @@ import com.meisolsson.githubsdk.model.Repository;
 import com.meisolsson.githubsdk.model.User;
 import com.meisolsson.githubsdk.service.activity.WatchingService;
 import com.meisolsson.githubsdk.service.repositories.RepositoryService;
-import com.google.inject.Inject;
-import com.google.inject.Provider;
-import com.google.inject.assistedinject.Assisted;
 
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
-import rx.Observable;
+import javax.inject.Provider;
+
+import retrofit2.Response;
 
 /**
  * Cache of repositories under a given organization
  */
-public class OrganizationRepositories implements
-        PersistableResource<Repository> {
-
-    /**
-     * Creation factory
-     */
-    public interface Factory {
-
-        /**
-         * Get repositories under given organization
-         *
-         * @param org
-         * @return repositories
-         */
-        OrganizationRepositories under(User org);
-    }
+@AutoFactory
+public class OrganizationRepositories implements PersistableResource<Repository> {
 
     private final User org;
 
@@ -76,9 +62,9 @@ public class OrganizationRepositories implements
      * @param context
      * @param accountProvider
      */
-    @Inject
-    public OrganizationRepositories(@Assisted User orgs, Context context,
-            Provider<Account> accountProvider) {
+    public OrganizationRepositories(User orgs,
+                                    @Provided Context context,
+                                    @Provided Provider<Account> accountProvider) {
         this.org = orgs;
         this.context = context;
         this.accountProvider = accountProvider;
@@ -94,7 +80,7 @@ public class OrganizationRepositories implements
                 "repos.watchers", "repos.language", "repos.hasIssues", "repos.mirrorUrl",
                 "repos.permissions_admin", "repos.permissions_pull", "repos.permissions_push" },
                 "repos.orgId=?",
-                new String[] { Integer.toString(org.id()) }, null, null,
+                new String[] { Integer.toString(org.id().intValue()) }, null, null,
                 null);
     }
 
@@ -102,7 +88,7 @@ public class OrganizationRepositories implements
     public Repository loadFrom(Cursor cursor) {
         User owner = User.builder()
                 .login(cursor.getString(3))
-                .id(cursor.getInt(2))
+                .id(cursor.getLong(2))
                 .avatarUrl(cursor.getString(4))
                 .build();
 
@@ -131,9 +117,10 @@ public class OrganizationRepositories implements
     @Override
     public void store(SQLiteDatabase db, List<Repository> repos) {
         db.delete("repos", "orgId=?",
-                new String[] { Integer.toString(org.id()) });
-        if (repos.isEmpty())
+                new String[] { Integer.toString(org.id().intValue()) });
+        if (repos.isEmpty()) {
             return;
+        }
 
         ContentValues values = new ContentValues(12);
         for (Repository repo : repos) {
@@ -170,52 +157,40 @@ public class OrganizationRepositories implements
     @Override
     public List<Repository> request() throws IOException {
         if (isAuthenticatedUser()) {
-            Set<Repository> all = new TreeSet<>(
-                    new Comparator<Repository>() {
-
-                        @Override
-                        public int compare(final Repository repo1,
-                                           final Repository repo2) {
-                            final long id1 = repo1.id();
-                            final long id2 = repo2.id();
-                            if (id1 > id2)
-                                return 1;
-                            if (id1 < id2)
-                                return -1;
-                            return 0;
-                        }
-                    });
-
-            all.addAll(getAllItems(new PageIterator.GitHubRequest<Page<Repository>>() {
-                @Override
-                public Observable<Page<Repository>> execute(int page) {
-                    return ServiceGenerator.createService(context, RepositoryService.class).getUserRepositories(page);
+            Set<Repository> all = new TreeSet<>((repo1, repo2) -> {
+                final long id1 = repo1.id();
+                final long id2 = repo2.id();
+                if (id1 > id2) {
+                    return 1;
                 }
-            }));
-
-            all.addAll(getAllItems(new PageIterator.GitHubRequest<Page<Repository>>() {
-                @Override
-                public Observable<Page<Repository>> execute(int page) {
-                    return ServiceGenerator.createService(context, WatchingService.class).getWatchedRepositories(page);
+                if (id1 < id2) {
+                    return -1;
                 }
-            }));
-            return new ArrayList<>(all);
-        } else
-            return getAllItems(new PageIterator.GitHubRequest<Page<Repository>>() {
-                @Override
-                public Observable<Page<Repository>> execute(int page) {
-                    return ServiceGenerator.createService(context, RepositoryService.class).getOrganizationRepositories(org.login(), page);
-                }
+                return 0;
             });
+
+            all.addAll(getAllItems(page ->
+                    ServiceGenerator.createService(context, RepositoryService.class)
+                            .getUserRepositories(page)));
+
+            all.addAll(getAllItems(page ->
+                    ServiceGenerator.createService(context, WatchingService.class)
+                            .getWatchedRepositories(page)));
+            return new ArrayList<>(all);
+        } else {
+            return getAllItems(page ->
+                    ServiceGenerator.createService(context, RepositoryService.class)
+                            .getOrganizationRepositories(org.login(), page));
+        }
     }
 
-    private List<Repository> getAllItems(PageIterator.GitHubRequest<Page<Repository>> request){
+    private List<Repository> getAllItems(GitHubRequest<Response<Page<Repository>>> request) {
         List<Repository> repos = new ArrayList<>();
         int current = 1;
         int last = -1;
 
         while(current != last) {
-            Page<Repository> page = request.execute(current).toBlocking().first();
+            Page<Repository> page = request.execute(current).blockingGet().body();
             repos.addAll(page.items());
             last = page.last() != null ? page.last() : -1;
             current = page.next() != null ? page.next() : -1;

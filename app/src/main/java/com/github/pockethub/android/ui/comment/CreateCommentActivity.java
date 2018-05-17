@@ -17,6 +17,7 @@ package com.github.pockethub.android.ui.comment;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.support.annotation.Nullable;
 import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -26,11 +27,12 @@ import com.github.pockethub.android.ui.TabPagerActivity;
 import com.github.pockethub.android.util.AvatarLoader;
 import com.meisolsson.githubsdk.model.GitHubComment;
 import com.meisolsson.githubsdk.model.git.GitComment;
-import com.google.inject.Inject;
+
+import javax.inject.Inject;
 
 import static com.github.pockethub.android.Intents.EXTRA_COMMENT;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_EDIT;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_WATCH;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_EDIT;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_WATCH;
 
 /**
  * Base activity for creating comments
@@ -47,8 +49,8 @@ public abstract class CreateCommentActivity extends
     protected AvatarLoader avatars;
 
     @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    protected void onPostCreate(@Nullable Bundle savedInstanceState) {
+        super.onPostCreate(savedInstanceState);
 
         getSupportActionBar().setDisplayHomeAsUpEnabled(true);
 
@@ -65,9 +67,10 @@ public abstract class CreateCommentActivity extends
     public void invalidateOptionsMenu() {
         super.invalidateOptionsMenu();
 
-        if (applyItem != null)
+        if (applyItem != null) {
             applyItem.setEnabled(adapter != null
-                && !TextUtils.isEmpty(adapter.getCommentText()));
+                    && !TextUtils.isEmpty(adapter.getCommentText()));
+        }
     }
 
     @Override

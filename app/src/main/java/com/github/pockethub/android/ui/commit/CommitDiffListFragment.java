@@ -21,39 +21,37 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
-import android.widget.ImageView;
-import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.afollestad.materialdialogs.DialogAction;
 import com.afollestad.materialdialogs.MaterialDialog;
+import com.github.pockethub.android.core.commit.RefreshCommitTaskFactory;
+import com.github.pockethub.android.rx.AutoDisposeUtils;
+import com.github.pockethub.android.ui.base.BaseFragment;
+import com.github.pockethub.android.ui.item.LoadingItem;
+import com.github.pockethub.android.ui.item.commit.CommitCommentItem;
+import com.github.pockethub.android.ui.item.TextItem;
+import com.github.pockethub.android.ui.item.commit.CommitFileHeaderItem;
+import com.github.pockethub.android.ui.item.commit.CommitFileLineItem;
+import com.github.pockethub.android.ui.item.commit.CommitHeaderItem;
+import com.github.pockethub.android.ui.item.commit.CommitParentItem;
 import com.meisolsson.githubsdk.model.Commit;
 import com.meisolsson.githubsdk.model.GitHubFile;
 import com.meisolsson.githubsdk.model.Repository;
-import com.github.kevinsawicki.wishlist.ViewFinder;
-import com.github.kevinsawicki.wishlist.ViewUtils;
 import com.github.pockethub.android.R;
 import com.github.pockethub.android.core.commit.CommitStore;
 import com.github.pockethub.android.core.commit.CommitUtils;
-import com.github.pockethub.android.core.commit.FullCommit;
 import com.github.pockethub.android.core.commit.FullCommitFile;
-import com.github.pockethub.android.core.commit.RefreshCommitTask;
-import com.github.pockethub.android.rx.ObserverAdapter;
-import com.github.pockethub.android.ui.DialogFragment;
-import com.github.pockethub.android.ui.HeaderFooterListAdapter;
-import com.github.pockethub.android.ui.StyledText;
 import com.github.pockethub.android.util.AvatarLoader;
 import com.github.pockethub.android.util.HttpImageGetter;
 import com.github.pockethub.android.util.InfoUtils;
@@ -61,18 +59,22 @@ import com.github.pockethub.android.util.ShareUtils;
 import com.github.pockethub.android.util.ToastUtils;
 import com.meisolsson.githubsdk.model.git.GitComment;
 import com.meisolsson.githubsdk.model.git.GitCommit;
-import com.google.inject.Inject;
+import com.xwray.groupie.GroupAdapter;
+import com.xwray.groupie.Item;
+import com.xwray.groupie.OnItemClickListener;
+import com.xwray.groupie.Section;
 
+import javax.inject.Inject;
+
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Date;
 import java.util.List;
 
-import rx.Observable;
-import rx.android.schedulers.AndroidSchedulers;
-import rx.schedulers.Schedulers;
+import butterknife.BindView;
+import io.reactivex.android.schedulers.AndroidSchedulers;
+import io.reactivex.schedulers.Schedulers;
 
 import static android.app.Activity.RESULT_OK;
-import static android.graphics.Paint.UNDERLINE_TEXT_FLAG;
 import static com.github.pockethub.android.Intents.EXTRA_BASE;
 import static com.github.pockethub.android.Intents.EXTRA_COMMENT;
 import static com.github.pockethub.android.Intents.EXTRA_REPOSITORY;
@@ -81,14 +83,16 @@ import static com.github.pockethub.android.RequestCodes.COMMENT_CREATE;
 /**
  * Fragment to display commit details with diff output
  */
-public class CommitDiffListFragment extends DialogFragment implements
-        OnItemClickListener {
+public class CommitDiffListFragment extends BaseFragment implements OnItemClickListener {
+
+
+    @BindView(android.R.id.list)
+    protected RecyclerView list;
+
+    @BindView(R.id.pb_loading)
+    protected ProgressBar progress;
 
     private DiffStyler diffStyler;
-
-    private ListView list;
-
-    private ProgressBar progress;
 
     private Repository repository;
 
@@ -101,37 +105,26 @@ public class CommitDiffListFragment extends DialogFragment implements
     private List<FullCommitFile> files;
 
     @Inject
-    private AvatarLoader avatars;
+    protected AvatarLoader avatars;
 
     @Inject
-    private CommitStore store;
+    protected CommitStore store;
 
-    private View loadingView;
+    private GroupAdapter adapter = new GroupAdapter();
 
-    private View commitHeader;
+    private Section mainSection = new Section();
 
-    private TextView commitMessage;
+    private Section commitSection = new Section();
 
-    private View authorArea;
+    private Section filesSection = new Section();
 
-    private ImageView authorAvatar;
-
-    private TextView authorName;
-
-    private TextView authorDate;
-
-    private View committerArea;
-
-    private ImageView committerAvatar;
-
-    private TextView committerName;
-
-    private TextView committerDate;
-
-    private HeaderFooterListAdapter<CommitFileListAdapter> adapter;
+    private Section commentSection = new Section();
 
     @Inject
-    private HttpImageGetter commentImageGetter;
+    protected RefreshCommitTaskFactory refreshCommitTaskFactory;
+
+    @Inject
+    protected HttpImageGetter commentImageGetter;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -140,28 +133,47 @@ public class CommitDiffListFragment extends DialogFragment implements
         Bundle args = getArguments();
         base = args.getString(EXTRA_BASE);
         repository = args.getParcelable(EXTRA_REPOSITORY);
+
+        mainSection.add(commitSection);
+        mainSection.add(filesSection);
+        mainSection.add(commentSection);
+
+        adapter.add(mainSection);
+        adapter.setOnItemClickListener(this);
     }
 
     @Override
     public void onActivityCreated(Bundle savedInstanceState) {
         super.onActivityCreated(savedInstanceState);
-
         commit = store.getCommit(repository, base);
 
-        ((TextView) loadingView.findViewById(R.id.tv_loading))
-                .setText(R.string.loading_files_and_comments);
-
         if (files == null
-                || (commit != null && commit.commit().commentCount() > 0 && comments == null))
-            adapter.addFooter(loadingView);
+                || (commit != null && commit.commit().commentCount() > 0 && comments == null)) {
+            mainSection.setFooter(new LoadingItem(R.string.loading_files_and_comments));
+        }
 
-        if (commit != null && comments != null && files != null)
+        if (commit != null && comments != null && files != null) {
             updateList(commit, comments, files);
-        else {
-            if (commit != null)
+        } else {
+            if (commit != null) {
                 updateHeader(commit);
+            }
             refreshCommit();
         }
+    }
+
+    @Override
+    public void onViewCreated(@NonNull View view, Bundle savedInstanceState) {
+        super.onViewCreated(view, savedInstanceState);
+        diffStyler = new DiffStyler(getResources());
+
+        list.setLayoutManager(new LinearLayoutManager(getActivity()));
+        list.setAdapter(adapter);
+    }
+
+    @Override
+    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
+        return inflater.inflate(R.layout.fragment_commit_diff_list, container, false);
     }
 
     private void addComment(final GitComment comment) {
@@ -179,8 +191,9 @@ public class CommitDiffListFragment extends DialogFragment implements
             }
             commentImageGetter.encode(comment, comment.bodyHtml());
             updateItems(comments, files);
-        } else
+        } else {
             refreshCommit();
+        }
     }
 
     @Override
@@ -202,8 +215,9 @@ public class CommitDiffListFragment extends DialogFragment implements
 
     @Override
     public boolean onOptionsItemSelected(final MenuItem item) {
-        if (!isUsable())
+        if (!isAdded()) {
             return false;
+        }
 
         switch (item.getItemId()) {
             case R.id.m_refresh:
@@ -240,174 +254,93 @@ public class CommitDiffListFragment extends DialogFragment implements
     }
 
     private void refreshCommit() {
-        Observable.create(new RefreshCommitTask(getActivity(), repository, base, commentImageGetter))
+        refreshCommitTaskFactory.create(getActivity(), repository, base)
+                .refresh()
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
-                .compose(this.<FullCommit>bindToLifecycle())
-                .subscribe(new ObserverAdapter<FullCommit>() {
-                    @Override
-                    public void onNext(FullCommit full) {
-                        List<GitHubFile> files = full.getCommit().files();
-                        diffStyler.setFiles(files);
-                        if (files != null)
-                            Collections.sort(files, new CommitFileComparator());
-
-                        updateList(full.getCommit(), full, full.getFiles());
+                .as(AutoDisposeUtils.bindToLifecycle(this))
+                .subscribe(full -> {
+                    List<GitHubFile> files = full.getCommit().files();
+                    diffStyler.setFiles(files);
+                    if (files != null) {
+                        Collections.sort(files, new CommitFileComparator());
                     }
 
-                    @Override
-                    public void onError(Throwable e) {
-                        ToastUtils.show(getActivity(), e, R.string.error_commit_load);
-                        ViewUtils.setGone(progress, true);
-                    }
+                    updateList(full.getCommit(), full, full.getFiles());
+                }, e -> {
+                    ToastUtils.show(getActivity(), R.string.error_commit_load);
+                    progress.setVisibility(View.GONE);
                 });
     }
 
-    private boolean isDifferentCommitter(final String author,
-                                         final String committer) {
-        return committer != null && !committer.equals(author);
-    }
-
-    private void addCommitDetails(Commit commit) {
-        adapter.addHeader(commitHeader);
-
-        commitMessage.setText(commit.commit().message());
-
-        String commitAuthor = CommitUtils.getAuthor(commit);
-        String commitCommitter = CommitUtils.getCommitter(commit);
-
-        if (commitAuthor != null) {
-            CommitUtils.bindAuthor(commit, avatars, authorAvatar);
-            authorName.setText(commitAuthor);
-            StyledText styledAuthor = new StyledText();
-            styledAuthor.append(getString(R.string.authored));
-
-            Date commitAuthorDate = CommitUtils.getAuthorDate(commit);
-            if (commitAuthorDate != null)
-                styledAuthor.append(' ').append(commitAuthorDate);
-
-            authorDate.setText(styledAuthor);
-            ViewUtils.setGone(authorArea, false);
-        } else
-            ViewUtils.setGone(authorArea, true);
-
-        if (isDifferentCommitter(commitAuthor, commitCommitter)) {
-            CommitUtils.bindCommitter(commit, avatars, committerAvatar);
-            committerName.setText(commitCommitter);
-            StyledText styledCommitter = new StyledText();
-            styledCommitter.append(getString(R.string.committed));
-
-            Date commitCommitterDate = CommitUtils.getCommitterDate(commit);
-            if (commitCommitterDate != null)
-                styledCommitter.append(' ').append(commitCommitterDate);
-
-            committerDate.setText(styledCommitter);
-            ViewUtils.setGone(committerArea, false);
-        } else
-            ViewUtils.setGone(committerArea, true);
-    }
-
-    private void addDiffStats(Commit commit, LayoutInflater inflater) {
-        View fileHeader = inflater.inflate(R.layout.commit_file_details_header,
-                null);
-        ((TextView) fileHeader.findViewById(R.id.tv_commit_file_summary))
-                .setText(CommitUtils.formatStats(commit.files()));
-        adapter.addHeader(fileHeader);
-    }
-
-    private void addCommitParents(Commit commit,
-                                  LayoutInflater inflater) {
+    private void addCommitParents(Commit commit) {
         List<Commit> parents = commit.parents();
-        if (parents == null || parents.isEmpty())
+        if (parents == null || parents.isEmpty()) {
             return;
-
-        for (Commit parent : parents) {
-            View parentView = inflater.inflate(R.layout.commit_parent_item, null);
-            TextView parentIdText = (TextView) parentView
-                    .findViewById(R.id.tv_commit_id);
-            parentIdText.setPaintFlags(parentIdText.getPaintFlags()
-                    | UNDERLINE_TEXT_FLAG);
-            StyledText parentText = new StyledText();
-            parentText.append(getString(R.string.parent_prefix));
-            parentText.monospace(CommitUtils.abbreviate(parent.sha()));
-            parentIdText.setText(parentText);
-            adapter.addHeader(parentView, parent, true);
         }
+
+        List<CommitParentItem> items = new ArrayList<>();
+        for (Commit parent : parents) {
+            items.add(new CommitParentItem(getActivity(), parent));
+        }
+        commitSection.update(items);
     }
 
     private void updateHeader(Commit commit) {
-        ViewUtils.setGone(progress, true);
-        ViewUtils.setGone(list, false);
+        progress.setVisibility(View.GONE);
+        list.setVisibility(View.VISIBLE);
 
-        addCommitDetails(commit);
-        addCommitParents(commit, getActivity().getLayoutInflater());
+        mainSection.setHeader(new CommitHeaderItem(avatars, getActivity(), commit));
+        addCommitParents(commit);
     }
 
     private void updateList(Commit commit, List<GitComment> comments, List<FullCommitFile> files) {
-        if (!isUsable())
+        if (!isAdded()) {
             return;
+        }
 
         this.commit = commit;
         this.comments = comments;
         this.files = files;
 
-        adapter.clearHeaders();
-        adapter.clearFooters();
         updateHeader(commit);
-        addDiffStats(commit, getActivity().getLayoutInflater());
+        mainSection.removeFooter();
+
+        filesSection.setHeader(
+                new TextItem(R.layout.commit_file_details_header,
+                        R.id.tv_commit_file_summary, CommitUtils.formatStats(commit.files()))
+        );
         updateItems(comments, files);
     }
 
-    private void updateItems(List<GitComment> comments,
-                             List<FullCommitFile> files) {
-        CommitFileListAdapter rootAdapter = adapter.getWrappedAdapter();
-        rootAdapter.clear();
-        for (FullCommitFile file : files)
-            rootAdapter.addItem(file);
-        for (GitComment comment : comments)
-            rootAdapter.addComment(comment);
+    private void updateItems(List<GitComment> comments, List<FullCommitFile> files) {
+        filesSection.update(createFileSections(files));
+
+        List<CommitCommentItem> items = new ArrayList<>();
+        for (GitComment comment : comments) {
+            items.add(new CommitCommentItem(avatars, commentImageGetter, comment));
+        }
+        commentSection.update(items);
     }
 
-    @Override
-    public void onViewCreated(View view, Bundle savedInstanceState) {
-        super.onViewCreated(view, savedInstanceState);
+    private List<Section> createFileSections(List<FullCommitFile> files) {
+        List<Section> sections = new ArrayList<>();
+        for (FullCommitFile file : files) {
+            Section section = new Section(new CommitFileHeaderItem(getActivity(), file.getFile()));
+            List<CharSequence> lines = diffStyler.get(file.getFile().filename());
+            int number = 0;
+            for (CharSequence line : lines) {
+                section.add(new CommitFileLineItem(diffStyler, line));
+                for (GitComment comment : file.get(number)) {
+                    section.add(new CommitCommentItem(avatars, commentImageGetter, comment, true));
+                }
+                number++;
+            }
 
-        list = finder.find(android.R.id.list);
-        progress = finder.find(R.id.pb_loading);
+            sections.add(section);
+        }
 
-        diffStyler = new DiffStyler(getResources());
-
-        list.setOnItemClickListener(this);
-
-        LayoutInflater inflater = getActivity().getLayoutInflater();
-
-        adapter = new HeaderFooterListAdapter<>(list,
-                new CommitFileListAdapter(inflater, diffStyler, avatars,
-                        commentImageGetter));
-        adapter.addFooter(inflater.inflate(R.layout.footer_separator, null));
-        list.setAdapter(adapter);
-
-        commitHeader = inflater.inflate(R.layout.commit_header, null);
-        commitMessage = (TextView) commitHeader
-                .findViewById(R.id.tv_commit_message);
-
-        authorArea = commitHeader.findViewById(R.id.ll_author);
-        authorAvatar = (ImageView) commitHeader.findViewById(R.id.iv_author);
-        authorName = (TextView) commitHeader.findViewById(R.id.tv_author);
-        authorDate = (TextView) commitHeader.findViewById(R.id.tv_author_date);
-
-        committerArea = commitHeader.findViewById(R.id.ll_committer);
-        committerAvatar = (ImageView) commitHeader
-                .findViewById(R.id.iv_committer);
-        committerName = (TextView) commitHeader.findViewById(R.id.tv_committer);
-        committerDate = (TextView) commitHeader.findViewById(R.id.tv_commit_date);
-
-        loadingView = inflater.inflate(R.layout.loading_item, null);
-    }
-
-    @Override
-    public View onCreateView(LayoutInflater inflater, ViewGroup container, Bundle savedInstanceState) {
-        return inflater.inflate(R.layout.fragment_commit_diff_list, container, false);
+        return sections;
     }
 
     private void showFileOptions(CharSequence line, final int position, final GitHubFile file) {
@@ -419,41 +352,30 @@ public class CommitDiffListFragment extends DialogFragment implements
 
         View view = getActivity().getLayoutInflater().inflate(
                 R.layout.diff_line_dialog, null);
-        ViewFinder finder = new ViewFinder(view);
 
-        TextView diff = finder.textView(R.id.tv_diff);
+        TextView diff = (TextView) view.findViewById(R.id.tv_diff);
         diff.setText(line);
         diffStyler.updateColors(line, diff);
 
-        finder.setText(R.id.tv_commit, getString(R.string.commit_prefix)
+        ((TextView) view.findViewById(R.id.tv_commit)).setText(getString(R.string.commit_prefix)
                 + CommitUtils.abbreviate(commit));
 
-        finder.find(R.id.ll_view_area).setOnClickListener(new OnClickListener() {
-            public void onClick(View v) {
-                dialogHolder[0].dismiss();
-                openFile(file);
-            }
+        view.findViewById(R.id.ll_view_area).setOnClickListener(v -> {
+            dialogHolder[0].dismiss();
+            openFile(file);
         });
 
-        finder.find(R.id.ll_comment_area).setOnClickListener(
-                new OnClickListener() {
-                    public void onClick(View v) {
-                        dialogHolder[0].dismiss();
-                        startActivityForResult(CreateCommentActivity
-                                        .createIntent(repository, commit.sha(),
-                                                file.filename(), position),
-                                COMMENT_CREATE);
-                    }
-                });
+        view.findViewById(R.id.ll_comment_area).setOnClickListener(v -> {
+            dialogHolder[0].dismiss();
+            startActivityForResult(CreateCommentActivity
+                            .createIntent(repository, commit.sha(),
+                                    file.filename(), position),
+                    COMMENT_CREATE);
+        });
 
         builder.customView(view, false)
                 .negativeText(R.string.cancel)
-                .onNegative(new MaterialDialog.SingleButtonCallback() {
-                    @Override
-                    public void onClick(@NonNull MaterialDialog dialog, @NonNull DialogAction which) {
-                        dialog.dismiss();
-                    }
-                });
+                .onNegative((dialog, which) -> dialog.dismiss());
 
         MaterialDialog dialog = builder.build();
         dialogHolder[0] = dialog;
@@ -463,9 +385,10 @@ public class CommitDiffListFragment extends DialogFragment implements
 
     private void openFile(GitHubFile file) {
         if (!TextUtils.isEmpty(file.filename())
-                && !TextUtils.isEmpty(file.sha()))
+                && !TextUtils.isEmpty(file.sha())) {
             startActivity(CommitFileViewActivity.createIntent(repository, base,
                     file));
+        }
     }
 
     /**
@@ -473,45 +396,50 @@ public class CommitDiffListFragment extends DialogFragment implements
      *
      * @param position
      * @param item
-     * @param parent
+     * @param adapter
      */
-    private void selectPreviousFile(int position, Object item,
-                                    AdapterView<?> parent) {
+    private void selectPreviousFile(int position, Object item, GroupAdapter adapter) {
         CharSequence line;
-        if (item instanceof CharSequence)
+        if (item instanceof CharSequence) {
             line = (CharSequence) item;
-        else
+        } else {
             line = null;
+        }
 
         int linePosition = 0;
         while (--position >= 0) {
-            item = parent.getItemAtPosition(position);
+            item = adapter.getItem(position);
 
-            if (item instanceof GitHubFile) {
-                if (line != null)
-                    showFileOptions(line, linePosition, (GitHubFile) item);
+            if (item instanceof CommitFileHeaderItem) {
+                if (line != null) {
+                    showFileOptions(line, linePosition, ((CommitFileHeaderItem) item).getFile());
+                }
                 break;
-            } else if (item instanceof CharSequence)
-                if (line != null)
+            } else if (item instanceof CharSequence) {
+                if (line != null) {
                     linePosition++;
-                else
+                } else {
                     line = (CharSequence) item;
+                }
+            }
         }
     }
 
     @Override
-    public void onItemClick(AdapterView<?> parent, View view, int position,
-                            long id) {
-        Object item = parent.getItemAtPosition(position);
-        if (item instanceof Commit)
-            startActivity(CommitViewActivity.createIntent(repository,
-                    ((Commit) item).sha()));
-        else if (item instanceof GitHubFile)
-            openFile((GitHubFile) item);
-        else if (item instanceof CharSequence)
-            selectPreviousFile(position, item, parent);
-        else if (item instanceof GitComment)
-            if (!TextUtils.isEmpty(((GitComment) item).path()))
-                selectPreviousFile(position, item, parent);
+    public void onItemClick(@NonNull Item item, @NonNull View view) {
+        int position = adapter.getAdapterPosition(item);
+
+        if (item instanceof CommitParentItem) {
+            String sha = ((CommitParentItem) item).getCommit().sha();
+            startActivity(CommitViewActivity.createIntent(repository, sha));
+        } else if (item instanceof CommitFileHeaderItem) {
+            openFile(((CommitFileHeaderItem) item).getFile());
+        } else if (item instanceof CharSequence) {
+            selectPreviousFile(position, item, adapter);
+        } else if (item instanceof CommitCommentItem) {
+            if (!TextUtils.isEmpty(((CommitCommentItem) item).getComment().path())) {
+                selectPreviousFile(position, item, adapter);
+            }
+        }
     }
 }

@@ -16,7 +16,6 @@
 package com.github.pockethub.android.ui;
 
 import android.content.DialogInterface;
-import android.content.DialogInterface.OnClickListener;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v4.app.FragmentActivity;
@@ -25,15 +24,14 @@ import android.support.v4.app.FragmentTransaction;
 
 import com.afollestad.materialdialogs.MaterialDialog;
 
-import roboguice.fragment.RoboDialogFragment;
+import dagger.android.support.DaggerAppCompatDialogFragment;
 
 import static android.app.Activity.RESULT_CANCELED;
 
 /**
  * Base dialog fragment helper
  */
-public abstract class DialogFragmentHelper extends RoboDialogFragment implements
-    OnClickListener {
+public abstract class DialogFragmentHelper extends DaggerAppCompatDialogFragment {
 
     /**
      * Dialog message
@@ -63,8 +61,9 @@ public abstract class DialogFragmentHelper extends RoboDialogFragment implements
         FragmentManager manager = activity.getSupportFragmentManager();
         FragmentTransaction transaction = manager.beginTransaction();
         Fragment current = manager.findFragmentByTag(tag);
-        if (current != null)
+        if (current != null) {
             transaction.remove(current);
+        }
         transaction.addToBackStack(null);
 
         fragment.setArguments(arguments);
@@ -97,9 +96,9 @@ public abstract class DialogFragmentHelper extends RoboDialogFragment implements
         final BaseActivity activity = (BaseActivity) getActivity();
         if (activity != null) {
             final Bundle arguments = getArguments();
-            if (arguments != null)
-                activity.onDialogResult(arguments.getInt(ARG_REQUEST_CODE),
-                    resultCode, arguments);
+            if (arguments != null) {
+                activity.onDialogResult(arguments.getInt(ARG_REQUEST_CODE), resultCode, arguments);
+            }
         }
     }
 
@@ -137,10 +136,5 @@ public abstract class DialogFragmentHelper extends RoboDialogFragment implements
                 .content(getMessage())
                 .cancelable(true)
                 .cancelListener(this);
-    }
-
-    @Override
-    public void onClick(DialogInterface dialog, int which) {
-        dialog.dismiss();
     }
 }

@@ -19,30 +19,29 @@ import android.app.Activity;
 import android.content.Context;
 
 import com.github.pockethub.android.util.HttpImageGetter;
+import com.github.pockethub.android.util.RxPageUtil;
+import com.google.auto.factory.AutoFactory;
+import com.google.auto.factory.Provided;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
-import com.meisolsson.githubsdk.model.Commit;
 import com.meisolsson.githubsdk.model.Repository;
-import com.meisolsson.githubsdk.model.git.GitComment;
-import com.meisolsson.githubsdk.model.git.GitCommit;
 import com.meisolsson.githubsdk.service.repositories.RepositoryCommentService;
-import com.google.inject.Inject;
+import com.meisolsson.githubsdk.service.repositories.RepositoryCommitService;
 
-import java.io.IOException;
-import java.util.List;
+import javax.inject.Inject;
 
-import roboguice.RoboGuice;
-import rx.Observable;
-import rx.Subscriber;
+import dagger.Provides;
+import io.reactivex.Observable;
+import io.reactivex.Single;
 
 /**
  * Task to load a commit by SHA-1 id
  */
-public class RefreshCommitTask implements Observable.OnSubscribe<FullCommit> {
+@AutoFactory
+public class RefreshCommitTask {
 
     private final Context context;
 
-    @Inject
-    private CommitStore store;
+    private final CommitStore store;
 
     private final Repository repository;
 
@@ -50,41 +49,40 @@ public class RefreshCommitTask implements Observable.OnSubscribe<FullCommit> {
 
     private final HttpImageGetter imageGetter;
 
+    private final RepositoryCommentService service;
+
     /**
      * @param repository
      * @param id
      * @param imageGetter
      */
-    public RefreshCommitTask(Activity activity, Repository repository,
-                             String id, HttpImageGetter imageGetter) {
-
+    public RefreshCommitTask(@Provided CommitStore store, @Provided HttpImageGetter imageGetter,
+                             @Provided RepositoryCommentService service,
+                             Activity activity, Repository repository, String id) {
+        this.service = service;
+        this.store = store;
         this.repository = repository;
         this.id = id;
         this.imageGetter = imageGetter;
         this.context = activity;
-        RoboGuice.injectMembers(activity, this);
     }
 
-    @Override
-    public void call(Subscriber<? super FullCommit> subscriber) {
-        try {
-            Commit commit = store.refreshCommit(repository, id);
-            GitCommit rawCommit = commit.commit();
-            if (rawCommit != null && rawCommit.commentCount() > 0) {
-                List<GitComment> comments = ServiceGenerator.createService(context, RepositoryCommentService.class)
-                        .getCommitComments(repository.owner().login(), repository.name(), commit.sha(), 1)
-                        .toBlocking()
-                        .first()
-                        .items();
-
-                for (GitComment comment : comments) {
-                    imageGetter.encode(comment, comment.bodyHtml());
-                }
-                subscriber.onNext(new FullCommit(commit, comments));
-            } else
-                subscriber.onNext(new FullCommit(commit));
-        }catch (IOException e){
-            subscriber.onError(e);
-        }
+    /**
+     * Fetches a commit with it's comments.
+     *
+     * @return Single for a FullCommit
+     */
+    public Single<FullCommit> refresh() {
+        return store.refreshCommit(repository, id)
+                .flatMap(commit -> RxPageUtil.getAllPages((page) ->
+                        service.getCommitComments(repository.owner().login(),
+                                repository.name(), commit.sha(), page), 1)
+                        .flatMap(page -> Observable.fromIterable(page.items()))
+                        .map(comment -> {
+                            imageGetter.encode(comment, comment.bodyHtml());
+                            return comment;
+                        })
+                        .toList()
+                        .map(comments -> new FullCommit(commit, comments)));
     }
 }

@@ -73,10 +73,6 @@ public class SourceEditor {
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true);
         view.addJavascriptInterface(this, "SourceEditor");
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.JELLY_BEAN) {
-            settings.setBuiltInZoomControls(true);
-            settings.setUseWideViewPort(true);
-        }
 
         this.view = view;
     }
@@ -102,14 +98,15 @@ public class SourceEditor {
      */
     @JavascriptInterface
     public String getContent() {
-        if (encoded)
+        if (encoded) {
             try {
                 return new String(Base64.decode(content, Base64.DEFAULT), "UTF-8");
             } catch (UnsupportedEncodingException e) {
                 return getRawContent();
             }
-        else
+        } else {
             return getRawContent();
+        }
     }
 
     /**
@@ -168,11 +165,13 @@ public class SourceEditor {
     }
 
     private void loadSource() {
-        if (name != null && content != null)
-            if (markdown)
+        if (name != null && content != null) {
+            if (markdown) {
                 view.loadDataWithBaseURL(null, content, "text/html", "UTF-8", null);
-            else
+            } else {
                 view.loadUrl(URL_PAGE);
+            }
+        }
     }
 
     /**
@@ -184,8 +183,9 @@ public class SourceEditor {
      */
     public SourceEditor setSource(final String name, final GitBlob blob) {
         String content = blob.content();
-        if (content == null)
+        if (content == null) {
             content = "";
+        }
         boolean encoded = !TextUtils.isEmpty(content) && ENCODING_BASE64.equals(blob.encoding());
         return setSource(name, content, encoded);
     }

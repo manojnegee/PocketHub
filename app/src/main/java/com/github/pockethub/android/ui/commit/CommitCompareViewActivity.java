@@ -19,6 +19,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.support.v4.app.Fragment;
 import android.support.v7.app.ActionBar;
+import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 
@@ -29,7 +30,7 @@ import com.github.pockethub.android.ui.BaseActivity;
 import com.github.pockethub.android.ui.repo.RepositoryViewActivity;
 import com.github.pockethub.android.util.AvatarLoader;
 import com.github.pockethub.android.util.InfoUtils;
-import com.google.inject.Inject;
+import javax.inject.Inject;
 
 import static android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP;
 import static android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP;
@@ -62,19 +63,16 @@ public class CommitCompareViewActivity extends BaseActivity {
     private Repository repository;
 
     @Inject
-    private AvatarLoader avatars;
+    protected AvatarLoader avatars;
 
     private Fragment fragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        repository = getIntent().getParcelableExtra(EXTRA_REPOSITORY);
-
         setContentView(R.layout.commit_compare);
 
-        setSupportActionBar((android.support.v7.widget.Toolbar) findViewById(R.id.toolbar));
+        repository = getIntent().getParcelableExtra(EXTRA_REPOSITORY);
 
         ActionBar actionBar = getSupportActionBar();
         actionBar.setDisplayHomeAsUpEnabled(true);
@@ -87,8 +85,9 @@ public class CommitCompareViewActivity extends BaseActivity {
 
     @Override
     public boolean onCreateOptionsMenu(Menu optionsMenu) {
-        if (fragment != null)
+        if (fragment != null) {
             fragment.onCreateOptionsMenu(optionsMenu, getMenuInflater());
+        }
 
         return super.onCreateOptionsMenu(optionsMenu);
     }
@@ -102,10 +101,11 @@ public class CommitCompareViewActivity extends BaseActivity {
                 startActivity(intent);
                 return true;
             default:
-                if (fragment != null)
+                if (fragment != null) {
                     return fragment.onOptionsItemSelected(item);
-                else
+                } else {
                     return super.onOptionsItemSelected(item);
+                }
         }
     }
 }

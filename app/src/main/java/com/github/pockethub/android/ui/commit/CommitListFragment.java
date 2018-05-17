@@ -19,26 +19,19 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
-import android.support.v4.content.Loader;
+import android.support.annotation.NonNull;
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.view.ViewGroup;
-import android.widget.ListView;
 import android.widget.TextView;
 
+import com.github.pockethub.android.ui.item.commit.CommitItem;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Commit;
 import com.meisolsson.githubsdk.model.Page;
 import com.meisolsson.githubsdk.model.Repository;
-import com.github.kevinsawicki.wishlist.SingleTypeAdapter;
-import com.github.kevinsawicki.wishlist.ViewUtils;
 import com.github.pockethub.android.R;
-import com.github.pockethub.android.ThrowableLoader;
-import com.github.pockethub.android.core.PageIterator;
-import com.github.pockethub.android.core.ResourcePager;
-import com.github.pockethub.android.core.commit.CommitPager;
 import com.github.pockethub.android.core.commit.CommitStore;
 import com.github.pockethub.android.core.ref.RefUtils;
 import com.github.pockethub.android.ui.BaseActivity;
@@ -48,15 +41,19 @@ import com.github.pockethub.android.ui.PagedItemFragment;
 import com.github.pockethub.android.ui.ref.RefDialog;
 import com.github.pockethub.android.ui.ref.RefDialogFragment;
 import com.github.pockethub.android.util.AvatarLoader;
-import com.github.pockethub.android.util.TypefaceUtils;
 import com.meisolsson.githubsdk.model.git.GitReference;
 import com.meisolsson.githubsdk.service.repositories.RepositoryCommitService;
 import com.meisolsson.githubsdk.service.repositories.RepositoryService;
-import com.google.inject.Inject;
+import com.xwray.groupie.Item;
+
+import javax.inject.Inject;
 
 import java.util.List;
 
-import rx.Observable;
+import butterknife.BindView;
+import butterknife.OnClick;
+import io.reactivex.Single;
+import retrofit2.Response;
 
 import static android.app.Activity.RESULT_OK;
 import static com.github.pockethub.android.Intents.EXTRA_REPOSITORY;
@@ -64,10 +61,12 @@ import static com.github.pockethub.android.RequestCodes.COMMIT_VIEW;
 import static com.github.pockethub.android.RequestCodes.REF_UPDATE;
 
 /**
- * Fragment to display a list of repository commits
+ * Fragment to display a list of repo commits
  */
-public class CommitListFragment extends PagedItemFragment<Commit>
-        implements DialogResultListener {
+public class CommitListFragment extends PagedItemFragment<Commit> implements DialogResultListener {
+
+    @Inject
+    protected RepositoryCommitService service;
 
     /**
      * Avatar loader
@@ -76,17 +75,20 @@ public class CommitListFragment extends PagedItemFragment<Commit>
     protected AvatarLoader avatars;
 
     @Inject
-    private CommitStore store;
+    protected CommitStore store;
 
-    private Repository repository;
+    private Repository repo;
 
     private RefDialog dialog;
 
-    private TextView branchIconView;
+    @BindView(R.id.tv_branch_icon)
+    protected TextView branchIconView;
 
-    private TextView branchView;
+    @BindView(R.id.tv_branch)
+    protected TextView branchView;
 
-    private View branchFooterView;
+    @BindView(R.id.rl_branch)
+    protected View branchFooterView;
 
     private String ref;
 
@@ -95,7 +97,7 @@ public class CommitListFragment extends PagedItemFragment<Commit>
         super.onAttach(context);
 
         Activity activity = (Activity) context;
-        repository = activity.getIntent().getParcelableExtra(EXTRA_REPOSITORY);
+        repo = activity.getIntent().getParcelableExtra(EXTRA_REPOSITORY);
     }
 
     @Override
@@ -106,82 +108,47 @@ public class CommitListFragment extends PagedItemFragment<Commit>
     }
 
     @Override
-    public Loader<List<Commit>> onCreateLoader(int id, Bundle bundle) {
-        final ThrowableLoader<List<Commit>> parentLoader = (ThrowableLoader<List<Commit>>) super
-                .onCreateLoader(id, bundle);
-        return new ThrowableLoader<List<Commit>>(getActivity(), items) {
-
-            @Override
-            public List<Commit> loadData() throws Exception {
-                if (TextUtils.isEmpty(ref)) {
-                    String defaultBranch = repository.defaultBranch();
-                    if (TextUtils.isEmpty(defaultBranch)) {
-                        defaultBranch = ServiceGenerator.createService(getActivity(), RepositoryService.class)
-                                .getRepository(repository.owner().login(), repository.name())
-                                .toBlocking()
-                                .first()
-                                .defaultBranch();
-
-                        if (TextUtils.isEmpty(defaultBranch))
-                            defaultBranch = "master";
-                    }
-                    ref = defaultBranch;
-                }
-
-                return parentLoader.loadData();
+    protected Single<Response<Page<Commit>>> loadData(int page) {
+        Single<String> refSingle;
+        if (TextUtils.isEmpty(ref)) {
+            String defaultBranch = repo.defaultBranch();
+            if (TextUtils.isEmpty(defaultBranch)) {
+                refSingle = ServiceGenerator.createService(getActivity(), RepositoryService.class)
+                        .getRepository(repo.owner().login(), repo.name())
+                        .map(response -> {
+                            String branch = response.body().defaultBranch();
+                            if (TextUtils.isEmpty(branch)) {
+                                return "master";
+                            }
+                            return branch;
+                        });
+            } else {
+                refSingle = Single.just(defaultBranch);
             }
-        };
-    }
+        } else {
+            refSingle = Single.just(ref);
+        }
 
-    public void onLoadFinished(Loader<List<Commit>> loader, List<Commit> items) {
-        super.onLoadFinished(loader, items);
-
-        if (ref != null)
-            updateRefLabel();
+        return refSingle
+                .map(ref -> {
+                    CommitListFragment.this.ref = ref;
+                    return ref;
+                })
+                .flatMap(branch ->
+                        service.getCommits(repo.owner().login(), repo.name(), branch, page));
     }
 
     @Override
-    protected ResourcePager<Commit> createPager() {
-        return new CommitPager(repository, store) {
+    protected Item createItem(Commit dataItem) {
+        return new CommitItem(avatars, dataItem);
+    }
 
-            private String last;
-
-            @Override
-            protected Commit register(Commit resource) {
-                // Store first parent of last commit registered for next page
-                // lookup
-                List<Commit> parents = resource.parents();
-                if (parents != null && !parents.isEmpty())
-                    last = parents.get(0).sha();
-                else
-                    last = null;
-
-                return super.register(resource);
-            }
-
-            @Override
-            public PageIterator<Commit> createIterator(int page, int size) {
-
-                return new PageIterator<>(new PageIterator.GitHubRequest<Page<Commit>>() {
-                    @Override
-                    public Observable<Page<Commit>> execute(int page) {
-                        RepositoryCommitService service = ServiceGenerator.createService(getActivity(),
-                                RepositoryCommitService.class);
-
-                        if (page > 1 || ref == null)
-                            return service.getCommits(repository.owner().login(), repository.name(), last, page);
-                        else
-                            return service.getCommits(repository.owner().login(), repository.name(), ref, page);
-                    }
-                }, page);
-            }
-
-            @Override
-            public ResourcePager<Commit> clear() {
-                last = null;
-                return super.clear();
-            }
-        };
+    @Override
+    protected void onDataLoaded(List<Item> items) {
+        super.onDataLoaded(items);
+        if (ref != null) {
+            updateRefLabel();
+        }
     }
 
     @Override
@@ -190,23 +157,20 @@ public class CommitListFragment extends PagedItemFragment<Commit>
     }
 
     @Override
-    protected int getErrorMessage(Exception exception) {
+    protected int getErrorMessage() {
         return R.string.error_commits_load;
     }
 
     @Override
-    protected SingleTypeAdapter<Commit> createAdapter(
-            List<Commit> items) {
-        return new CommitListAdapter(R.layout.commit_item, getActivity()
-                .getLayoutInflater(), items, avatars);
-    }
-
-    @Override
-    public void onListItemClick(ListView l, View v, int position, long id) {
-        Object item = l.getItemAtPosition(position);
-        if (item instanceof Commit)
-            startActivityForResult(CommitViewActivity.createIntent(repository,
-                    position, items), COMMIT_VIEW);
+    public void onItemClick(@NonNull Item item, @NonNull View view) {
+        super.onItemClick(item, view);
+        if (item instanceof CommitItem) {
+            int position = getListAdapter().getAdapterPosition(item);
+            startActivityForResult(
+                    CommitViewActivity.createIntent(repo, position, items),
+                    COMMIT_VIEW
+            );
+        }
     }
 
     @Override
@@ -221,8 +185,9 @@ public class CommitListFragment extends PagedItemFragment<Commit>
 
     @Override
     public void onDialogResult(int requestCode, int resultCode, Bundle arguments) {
-        if (RESULT_OK != resultCode)
+        if (RESULT_OK != resultCode) {
             return;
+        }
 
         switch (requestCode) {
         case REF_UPDATE:
@@ -233,10 +198,11 @@ public class CommitListFragment extends PagedItemFragment<Commit>
 
     private void updateRefLabel() {
         branchView.setText(RefUtils.getName(ref));
-        if (RefUtils.isTag(ref))
+        if (RefUtils.isTag(ref)) {
             branchIconView.setText(R.string.icon_tag);
-        else
+        } else {
             branchIconView.setText(R.string.icon_fork);
+        }
     }
 
     private void setRef(final GitReference ref) {
@@ -245,13 +211,16 @@ public class CommitListFragment extends PagedItemFragment<Commit>
         refreshWithProgress();
     }
 
-    private void switchRefs() {
-        if (ref == null)
+    @OnClick(R.id.rl_branch)
+    protected void switchRefs() {
+        if (ref == null) {
             return;
+        }
 
-        if (dialog == null)
+        if (dialog == null) {
             dialog = new RefDialog((BaseActivity) getActivity(),
-                    REF_UPDATE, repository);
+                    REF_UPDATE, repo);
+        }
         GitReference reference = GitReference.builder()
                 .ref(ref)
                 .build();
@@ -259,27 +228,9 @@ public class CommitListFragment extends PagedItemFragment<Commit>
     }
 
     @Override
-    public ItemListFragment<Commit> setListShown(boolean shown,
-            boolean animate) {
-        ViewUtils.setGone(branchFooterView, !shown);
+    public ItemListFragment setListShown(boolean shown, boolean animate) {
+        branchFooterView.setVisibility(shown ? View.VISIBLE : View.GONE);
         return super.setListShown(shown, animate);
-    }
-
-    @Override
-    public void onViewCreated(View view, Bundle savedInstanceState) {
-        super.onViewCreated(view, savedInstanceState);
-
-        branchFooterView = finder.find(R.id.rl_branch);
-        branchView = finder.find(R.id.tv_branch);
-        branchIconView = finder.find(R.id.tv_branch_icon);
-        TypefaceUtils.setOcticons(branchIconView);
-        branchFooterView.setOnClickListener(new OnClickListener() {
-
-            @Override
-            public void onClick(View v) {
-                switchRefs();
-            }
-        });
     }
 
     @Override

@@ -17,6 +17,7 @@ package com.github.pockethub.android.ui.issue;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.view.MenuItem;
 import android.view.View;
@@ -26,10 +27,10 @@ import com.github.pockethub.android.ui.TabPagerFragment;
 
 import static android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP;
 import static android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_ADD;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_BROADCAST;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_FOLLOW;
-import static com.github.pockethub.android.util.TypefaceUtils.ICON_WATCH;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_ADD;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_BROADCAST;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_FOLLOW;
+import static com.github.pockethub.android.ui.view.OcticonTextView.ICON_WATCH;
 
 /**
  * Dashboard activity for issues
@@ -38,7 +39,7 @@ public class IssueDashboardPagerFragment extends
     TabPagerFragment<IssueDashboardPagerAdapter> {
 
     @Override
-    public void onViewCreated(View view, @Nullable Bundle savedInstanceState) {
+    public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
         configureTabPager();
     }

@@ -22,17 +22,18 @@ import android.os.Bundle;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.app.ActionBar;
 import android.support.v7.widget.SearchView;
+import android.support.v7.widget.Toolbar;
 import android.view.Menu;
 import android.view.MenuItem;
 
+import com.github.pockethub.android.ui.BaseActivity;
 import com.meisolsson.githubsdk.model.Repository;
 import com.github.pockethub.android.R;
 import com.github.pockethub.android.ui.repo.RepositoryViewActivity;
-import com.github.pockethub.android.ui.roboactivities.RoboAppCompatActivity;
 import com.github.pockethub.android.util.AvatarLoader;
 import com.github.pockethub.android.util.InfoUtils;
 import com.github.pockethub.android.util.ToastUtils;
-import com.google.inject.Inject;
+import javax.inject.Inject;
 
 import static android.app.SearchManager.APP_DATA;
 import static android.app.SearchManager.QUERY;
@@ -44,10 +45,10 @@ import static com.github.pockethub.android.Intents.EXTRA_REPOSITORY;
 /**
  * Activity to search issues
  */
-public class IssueSearchActivity extends RoboAppCompatActivity {
+public class IssueSearchActivity extends BaseActivity {
 
     @Inject
-    private AvatarLoader avatars;
+    protected AvatarLoader avatars;
 
     private Repository repository;
 
@@ -76,12 +77,7 @@ public class IssueSearchActivity extends RoboAppCompatActivity {
     public boolean onOptionsItemSelected(MenuItem item) {
         switch (item.getItemId()) {
             case R.id.m_search:
-                searchView.post(new Runnable() {
-                    @Override
-                    public void run() {
-                        searchView.setQuery(lastQuery, false);
-                    }
-                });
+                searchView.post(() -> searchView.setQuery(lastQuery, false));
                 return true;
             case R.id.m_clear:
                 IssueSearchSuggestionsProvider.clear(this);
@@ -100,10 +96,7 @@ public class IssueSearchActivity extends RoboAppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
         setContentView(R.layout.activity_issue_search);
-
-        setSupportActionBar((android.support.v7.widget.Toolbar) findViewById(R.id.toolbar));
 
         ActionBar actionBar = getSupportActionBar();
         Bundle appData = getIntent().getBundleExtra(APP_DATA);
@@ -131,8 +124,9 @@ public class IssueSearchActivity extends RoboAppCompatActivity {
     }
 
     private void handleIntent(Intent intent) {
-        if (ACTION_SEARCH.equals(intent.getAction()))
+        if (ACTION_SEARCH.equals(intent.getAction())) {
             search(intent.getStringExtra(QUERY));
+        }
     }
 
     private void search(final String query) {

@@ -20,12 +20,10 @@ import android.content.Context;
 import com.meisolsson.githubsdk.core.ServiceGenerator;
 import com.meisolsson.githubsdk.model.Page;
 import com.meisolsson.githubsdk.model.User;
-import com.github.pockethub.android.core.PageIterator;
-import com.github.pockethub.android.core.ResourcePager;
-import com.github.pockethub.android.core.user.UserPager;
 import com.meisolsson.githubsdk.service.users.UserFollowerService;
 
-import rx.Observable;
+import io.reactivex.Single;
+import retrofit2.Response;
 
 import static com.github.pockethub.android.Intents.EXTRA_USER;
 
@@ -33,6 +31,8 @@ import static com.github.pockethub.android.Intents.EXTRA_USER;
  * Fragment to display the users being followed by a specific user
  */
 public class UserFollowingFragment extends FollowingFragment {
+
+    UserFollowerService service = ServiceGenerator.createService(getContext(), UserFollowerService.class);
 
     private User user;
 
@@ -44,19 +44,7 @@ public class UserFollowingFragment extends FollowingFragment {
     }
 
     @Override
-    protected ResourcePager<User> createPager() {
-        return new UserPager() {
-
-            @Override
-            public PageIterator<User> createIterator(int page, int size) {
-                return new PageIterator<>(new PageIterator.GitHubRequest<Page<User>>() {
-                    @Override
-                    public Observable<Page<User>> execute(int page) {
-                        return ServiceGenerator.createService(getContext(), UserFollowerService.class)
-                                .getFollowing(user.login(), page);
-                    }
-                }, page);
-            }
-        };
+    protected Single<Response<Page<User>>> loadData(int page) {
+        return service.getFollowing(user.login(), page);
     }
 }

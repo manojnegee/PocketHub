@@ -21,16 +21,13 @@ import android.database.sqlite.SQLiteOpenHelper;
 import android.database.sqlite.SQLiteQueryBuilder;
 import android.util.Log;
 
-import com.github.pockethub.android.RequestFuture;
 import com.github.pockethub.android.RequestReader;
 import com.github.pockethub.android.RequestWriter;
 import com.github.pockethub.android.core.issue.IssueFilter;
-import com.github.pockethub.android.persistence.OrganizationRepositories.Factory;
-import com.github.pockethub.android.rx.ObserverAdapter;
 import com.meisolsson.githubsdk.model.Repository;
 import com.meisolsson.githubsdk.model.User;
-import com.google.inject.Inject;
-import com.google.inject.name.Named;
+import javax.inject.Inject;
+import javax.inject.Named;
 
 import java.io.File;
 import java.io.IOException;
@@ -42,8 +39,8 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
-import rx.Observable;
-import rx.Subscriber;
+import io.reactivex.Single;
+import io.reactivex.functions.Consumer;
 
 /**
  * Manager cache for an account
@@ -61,20 +58,23 @@ public class AccountDataManager {
     private static final int FORMAT_VERSION = 4;
 
     @Inject
-    private Context context;
+    protected Context context;
 
     @Inject
-    private DatabaseCache dbCache;
+    protected DatabaseCache dbCache;
 
     @Inject
-    private Factory allRepos;
+    protected OrganizationRepositoriesFactory allRepos;
 
     @Inject
-    private Organizations userAndOrgsResource;
+    protected Organizations userAndOrgsResource;
 
     @Inject
     @Named("cacheDir")
-    private File root;
+    protected File root;
+
+    @Inject
+    public AccountDataManager() {}
 
     /**
      * @return context
@@ -94,11 +94,12 @@ public class AccountDataManager {
         long start = System.currentTimeMillis();
         long length = file.length();
         Object data = new RequestReader(file, FORMAT_VERSION).read();
-        if (data != null)
+        if (data != null) {
             Log.d(TAG, MessageFormat.format(
                     "Cache hit to {0}, {1} ms to load {2} bytes",
                     file.getName(), (System.currentTimeMillis() - start),
                     length));
+        }
         return (V) data;
     }
 
@@ -174,7 +175,7 @@ public class AccountDataManager {
      */
     public List<Repository> getRepos(final User user, boolean forceReload)
             throws IOException {
-        OrganizationRepositories resource = allRepos.under(user);
+        OrganizationRepositories resource = allRepos.create(user);
         return forceReload ? dbCache.requestAndStore(resource) : dbCache
                 .loadOrRequest(resource);
     }
@@ -190,29 +191,10 @@ public class AccountDataManager {
     public Collection<IssueFilter> getIssueFilters() {
         final File cache = new File(root, "issue_filters.ser");
         Collection<IssueFilter> cached = read(cache);
-        if (cached != null)
+        if (cached != null) {
             return cached;
+        }
         return Collections.emptyList();
-    }
-
-    /**
-     * Get bookmarked issue filters
-     *
-     * @param requestFuture
-     */
-    public void getIssueFilters(
-            final RequestFuture<Collection<IssueFilter>> requestFuture) {
-        Observable.create(new Observable.OnSubscribe<Collection<IssueFilter>>() {
-            @Override
-            public void call(Subscriber<? super Collection<IssueFilter>> subscriber) {
-                subscriber.onNext(getIssueFilters());
-            }
-        }).subscribe(new ObserverAdapter<Collection<IssueFilter>>() {
-            @Override
-            public void onNext(Collection<IssueFilter> filters) {
-                requestFuture.success(filters);
-            }
-        });
     }
 
     /**
@@ -223,40 +205,19 @@ public class AccountDataManager {
      *
      * @param filter
      */
-    public void addIssueFilter(IssueFilter filter) {
-        final File cache = new File(root, "issue_filters.ser");
-        Collection<IssueFilter> filters = read(cache);
-        if (filters == null)
-            filters = new HashSet<>();
-        if (filters.add(filter))
-            write(cache, filters);
-    }
-
-    /**
-     * Add issue filter to store
-     *
-     * @param filter
-     * @param requestFuture
-     */
-    public void addIssueFilter(final IssueFilter filter,
-            final RequestFuture<IssueFilter> requestFuture) {
-        Observable.create(new Observable.OnSubscribe<IssueFilter>() {
-            @Override
-            public void call(Subscriber<? super IssueFilter> subscriber) {
-                addIssueFilter(filter);
-                subscriber.onNext(filter);
+    public Single<IssueFilter> addIssueFilter(final IssueFilter filter) {
+        return Single.fromCallable(() -> {
+            final File cache = new File(root, "issue_filters.ser");
+            Collection<IssueFilter> filters = read(cache);
+            if (filters == null) {
+                filters = new HashSet<>();
             }
-        }).subscribe(new ObserverAdapter<IssueFilter>() {
-            @Override
-            public void onError(Throwable e) {
-                Log.d(TAG, "Exception adding issue filter", e);
+            if (filters.add(filter)) {
+                write(cache, filters);
             }
 
-            @Override
-            public void onNext(IssueFilter issueFilter) {
-                requestFuture.success(issueFilter);
-            }
-        });
+            return filter;
+        }).doOnError(e -> Log.d(TAG, "Exception adding issue filter", e));
     }
 
     /**
@@ -267,37 +228,15 @@ public class AccountDataManager {
      *
      * @param filter
      */
-    public void removeIssueFilter(IssueFilter filter) {
-        final File cache = new File(root, "issue_filters.ser");
-        Collection<IssueFilter> filters = read(cache);
-        if (filters != null && filters.remove(filter))
-            write(cache, filters);
-    }
-
-    /**
-     * Remove issue filter from store
-     *
-     * @param filter
-     * @param requestFuture
-     */
-    public void removeIssueFilter(final IssueFilter filter,
-            final RequestFuture<IssueFilter> requestFuture) {
-        Observable.create(new Observable.OnSubscribe<IssueFilter>() {
-            @Override
-            public void call(Subscriber<? super IssueFilter> subscriber) {
-                removeIssueFilter(filter);
-                subscriber.onNext(filter);
-            }
-        }).subscribe(new ObserverAdapter<IssueFilter>() {
-            @Override
-            public void onNext(IssueFilter issueFilter) {
-                requestFuture.success(issueFilter);
+    public Single<IssueFilter> removeIssueFilter(IssueFilter filter) {
+        return Single.fromCallable(() -> {
+            final File cache = new File(root, "issue_filters.ser");
+            Collection<IssueFilter> filters = read(cache);
+            if (filters != null && filters.remove(filter)) {
+                write(cache, filters);
             }
 
-            @Override
-            public void onError(Throwable e) {
-                Log.d(TAG, "Exception removing issue filter", e);
-            }
-        });
+            return filter;
+        }).doOnError( e -> Log.d(TAG, "Exception removing issue filter", e));
     }
 }
